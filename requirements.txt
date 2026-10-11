@@ -1,0 +1,5 @@
+# Python deps for the deploy tooling (pages_deploy.py hashes uploads with blake3).
+# Install into the persistent user site (~/.local survives VM replacement; the
+# system site-packages under /usr/local do not):
+#   pip3 install --user -r requirements.txt
+blake3==1.0.10

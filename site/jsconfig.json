@@ -1,0 +1,18 @@
+{
+  // Type-checks the annotated first-party JS with tsc --noEmit --checkJs.
+  // Rollout is incremental: only files whose JSDoc is complete are listed in
+  // "include". To adopt a new file, annotate it until `tsc -p jsconfig.json`
+  // reports no errors with the file added, then add it here.
+  // Excluded: vendor/ (third-party, untyped), swe.js (Emscripten-generated).
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "target": "es2022",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": false
+  },
+  "include": ["sky-data.js", "lots.js", "dignities.js"],
+  "exclude": ["vendor", "swe.js"]
+}

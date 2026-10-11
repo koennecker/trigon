@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trigon</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0;
+    display: flex; align-items: stretch;
+    min-height: 100dvh; overflow-x: clip;
+    background: #0d1117; color: #e6edf3;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 15px; line-height: 1.5;
+  }
+  /* Main column: grows into the space beside the nav drawer and stays
+     centered within it (auto margins absorb leftover below max-width). */
+  main { flex: 1 1 auto; min-width: 0; max-width: 980px; margin: 0 auto; padding: 24px 16px 64px; }
+  .res-brand {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 18px; font-weight: 600; margin-bottom: 8px;
+  }
+  .res-brand .logo { width: 30px; height: 30px; flex-shrink: 0; }
+  .card {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 18px; margin-bottom: 16px;
+  }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+  label { display: block; font-size: 12px; color: #8b949e; margin-bottom: 4px; }
+  .field { margin-bottom: 12px; }
+  .skip-row { display: flex; gap: 6px; margin-top: 8px; }
+  .skip-row button { margin: 0; padding: 8px 12px; flex: 0 0 auto; font-size: 16px; line-height: 1; }
+  .skip-row input { flex: 0 1 70px; min-width: 0; }
+  .skip-row select { flex: 1 1 auto; min-width: 0; }
+  .anim-row { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
+  .anim-row button { margin: 0; padding: 8px 12px; flex: 0 0 auto; }
+  .anim-row input[type="number"] { flex: 0 1 70px; min-width: 0; }
+  .anim-row select { flex: 1 1 auto; min-width: 0; }
+  /* Absolute date range: fluid grid — each datetime input takes a
+     proportional share of the row and can shrink to a zero basis, so the
+     row fits any drawer width instead of overflowing it. */
+  #anim-absolute { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; }
+  #anim-absolute input[type="datetime-local"] { width: 100%; min-width: 0; }
+  #anim-absolute .dim { text-align: center; }
+  .anim-speed { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; margin: 0; }
+  .anim-speed select { flex: 1 1 auto; min-width: 0; }
+  #anim-status { min-height: 1.2em; }
+  .stn-anim { padding: 2px 10px; font-size: 14px; line-height: 1.4; }
+  #sky-fsbtn, #sky-lockbtn {
+    position: absolute; z-index: 6; background: rgba(13,17,23,.72);
+    border: 1px solid #30363d; color: #e6edf3; border-radius: 4px;
+    padding: 4px 9px; font-size: 14px; line-height: 1.4; cursor: pointer;
+  }
+  #sky-fsbtn { top: 46px; right: 8px; }
+  #sky-lockbtn { top: 8px; left: 8px; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Native fullscreen, plus the pseudo-fullscreen fallback (iOS Safari
+     exposes no Fullscreen API for divs): either way the wrap covers the
+     viewport and the ResizeObserver re-fits the renderer. */
+  #sky-wrap:fullscreen, #sky-wrap.sky-pseudofull { height: 100dvh; max-height: none; border-radius: 0; border: none; }
+  #sky-wrap.sky-pseudofull { position: fixed; inset: 0; z-index: 200; }
+  .dt-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .dt-row select { width: auto; flex: none; padding: 8px 6px; }
+  .dtwrap { position: relative; flex: 1 1 240px; min-width: 0; display: inline-flex; }
+  .dtin {
+    width: 100%; min-width: 0; padding: 8px 30px 8px 10px; font-size: 15px;
+    font-family: inherit; font-variant-numeric: tabular-nums;
+    background: #0d1117; color: #e6edf3; border: 1px solid #30363d; border-radius: 6px;
+  }
+  .dtin:focus { outline: none; border-color: #58a6ff; }
+  .dtcal {
+    position: absolute; right: 2px; top: 2px; bottom: 2px; margin: 0;
+    background: transparent; border: none; border-radius: 4px;
+    color: #8b949e; font-size: 12px; padding: 0 8px; cursor: pointer; line-height: 1;
+  }
+  .dtcal:hover:not(:disabled) { color: #e6edf3; background: #21262d; }
+  .dpick {
+    position: fixed; z-index: 1000; width: min(288px, calc(100vw - 16px));
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.5); padding: 10px 10px 12px;
+    color: #e6edf3; user-select: none; font-size: 15px;
+  }
+  .dpick-head { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
+  .dpick-head button { margin-left: 0; }
+  .dpick-nav {
+    background: transparent; border: 1px solid transparent; border-radius: 6px;
+    color: #e6edf3; font-size: 18px; line-height: 1; padding: 6px 10px; cursor: pointer;
+  }
+  .dpick-nav:hover:not(:disabled) { background: #21262d; }
+  .dpick-nav:disabled { opacity: .3; cursor: default; }
+  .dpick-title {
+    flex: 1; background: transparent; border: 1px solid transparent; border-radius: 6px;
+    color: #e6edf3; font-family: inherit; font-size: 15px; font-weight: 600;
+    padding: 6px 4px; cursor: pointer;
+  }
+  .dpick-title:hover:not(:disabled) { background: #21262d; }
+  .dpick-yedit { flex: 1; display: flex; gap: 4px; align-items: center; }
+  .dpick-yin { width: 6em; flex: none; }
+  .dpick-era { flex: none; width: auto; }
+  .dpick-go { flex: none; padding: 8px 12px; }
+  .dpick-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+  .dpick-dow { text-align: center; font-size: 11px; color: #8b949e; padding: 4px 0; }
+  .dpick-day {
+    background: transparent; border: 1px solid transparent; border-radius: 6px;
+    color: #e6edf3; font-family: inherit; font-size: 13px; padding: 7px 0;
+    cursor: pointer; text-align: center;
+  }
+  .dpick-day:hover:not(:disabled) { background: #21262d; border-color: #30363d; }
+  .dpick-day.dim { color: #6e7681; }
+  .dpick-day.sel { background: #1f6feb; border-color: #1f6feb; color: #fff; font-weight: 600; }
+  .dpick-day:disabled { opacity: .28; cursor: default; }
+  /* Month suggestion popup (type-ahead on the month segment). */
+  .msuggest {
+    position: fixed; z-index: 1000; min-width: 140px; max-width: 220px;
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.5); padding: 6px;
+    color: #e6edf3; user-select: none; font-size: 15px;
+  }
+  .msuggest-item {
+    display: block; width: 100%; text-align: left;
+    background: transparent; border: 1px solid transparent; border-radius: 6px;
+    color: #e6edf3; font-size: 15px; padding: 8px 10px; margin: 0; cursor: pointer;
+  }
+  .msuggest-item:hover { background: #21262d; }
+  .msuggest-item.hi { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+  .dpick-time {
+    display: flex; gap: 8px; justify-content: center; align-items: flex-start;
+    margin-top: 10px; padding: 10px 2px 0; border-top: 1px solid #30363d;
+  }
+  .tstep { display: inline-flex; flex-direction: column; align-items: center; gap: 3px; }
+  .tlab { font-size: 10px; color: #8b949e; text-transform: uppercase; letter-spacing: .08em; }
+  .tctl { display: inline-flex; align-items: center; gap: 2px; }
+  .tval {
+    min-width: 2.2em; text-align: center; font-variant-numeric: tabular-nums;
+    font-size: 15px; padding: 4px 2px;
+  }
+  .dpick-time .tbtn {
+    margin: 0; padding: 4px 7px; font-size: 14px; line-height: 1;
+    background: transparent; border: 1px solid transparent; border-radius: 6px;
+    color: #8b949e; cursor: pointer; font-weight: 400;
+  }
+  .dpick-time .tbtn:hover:not(:disabled) { background: #21262d; color: #e6edf3; }
+  #tz:disabled { opacity: 0.45; }
+  /* #tz-name keeps its line even when empty: collapsing it shifts the
+     Calculate button under a real mouse between mousedown and mouseup
+     (e.g. a blur-triggered timezone re-derivation while clicking). */
+  #tz-name { min-height: 1.4em; }
+  input, select {
+    width: 100%; padding: 8px 10px; font-size: 15px;
+    background: #0d1117; color: #e6edf3;
+    border: 1px solid #30363d; border-radius: 6px;
+  }
+  input:focus, select:focus { outline: none; border-color: #58a6ff; }
+  button {
+    margin-top: 14px; padding: 10px 22px; font-size: 15px; font-weight: 600;
+    background: #238636; color: #fff; border: none; border-radius: 6px; cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: #2ea043; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button.ghost { background: transparent; border: 1px solid #30363d; color: #e6edf3; margin-left: 8px; }
+  /* Search result date cells: clickable, sets the main chart datetime. */
+  button.goto-dt { background: none; border: none; padding: 0; margin: 0; color: inherit;
+    font: inherit; font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer;
+    text-decoration: underline dotted #6e7681; text-underline-offset: 3px; }
+  button.goto-dt:hover:not(:disabled) { background: none; color: #58a6ff;
+    text-decoration: underline solid #58a6ff; }
+  #error { color: #f85149; margin-top: 10px; font-size: 14px; min-height: 1.2em; }
+  #warn { color: #d29922; margin-top: 8px; font-size: 14px; }
+  #fallback { display: none; margin-top: 10px; }
+  #log {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px; color: #8b949e; background: #0d1117;
+    border: 1px solid #30363d; border-radius: 6px;
+    padding: 10px 12px; max-height: 150px; overflow-y: auto; margin-top: 12px;
+  }
+  #log div { white-space: nowrap; }
+  #city-results {
+    position: absolute; left: 0; right: 0; top: 100%; z-index: 10;
+    background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+    margin-top: 4px; overflow: hidden; display: none;
+  }
+  #city-results.open { display: block; }
+  #city-results .item {
+    padding: 8px 10px; cursor: pointer; font-size: 14px;
+    display: flex; justify-content: space-between; gap: 8px;
+  }
+  #city-results .item:hover, #city-results .item.active { background: #21262d; }
+  #city-results .item .pop { color: #8b949e; font-size: 12px; white-space: nowrap; }
+  #loc-label { font-size: 13px; color: #3fb950; margin-top: 6px; min-height: 1.2em; }
+  #tz-name { color: #3fb950; font-size: 12px; }
+  details#manual-loc { margin-top: 12px; }
+  details#manual-loc summary { cursor: pointer; color: #8b949e; font-size: 14px; }
+  small.hint { display: block; color: #6e7681; font-size: 12px; margin-top: 4px; }
+  .results-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 12px; flex-wrap: wrap; margin-bottom: 10px;
+  }
+  .loader { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 44px 0; }
+  .loader svg { overflow: visible; }
+  #lglyph { transform-box: fill-box; transform-origin: center; }
+  .orbit { transform-origin: 60px 60px; animation: orbit 7s linear infinite; }
+  @keyframes orbit { to { transform: rotate(360deg); } }
+  .load-label { color: #8b949e; font-size: 13px; }
+  @media (prefers-reduced-motion: reduce) { .orbit { animation: none; } }
+  .seg { display: inline-flex; border: 1px solid #30363d; border-radius: 6px; overflow: hidden; flex-shrink: 0; }
+  .seg button {
+    margin: 0; padding: 6px 12px; background: transparent; border: none; border-radius: 0;
+    font-size: 13px; font-weight: 400; color: #8b949e; white-space: nowrap;
+  }
+  .seg button:hover:not(:disabled) { background: #21262d; }
+  .seg button[aria-pressed="true"] { background: #21262d; color: #e6edf3; font-weight: 600; }
+  .tabs { display: flex; gap: 4px; margin: 12px 0 4px; border-bottom: 1px solid #30363d; }
+  .tabs button {
+    margin: 0; padding: 8px 18px; background: transparent; border: none; border-radius: 6px 6px 0 0;
+    color: #8b949e; font-size: 14px; font-weight: 400;
+  }
+  .tabs button:hover:not(:disabled) { background: #21262d; }
+  .tabs button[aria-selected="true"] { color: #e6edf3; font-weight: 600; box-shadow: inset 0 -2px 0 #58a6ff; }
+  .chart-wrap { display: flex; justify-content: center; padding: 8px 0 0; }
+  .chart-wrap svg { width: 100%; max-width: 620px; height: auto; }
+  #sky-wrap { position: relative; height: min(74vh, 660px); min-height: 320px; border: 1px solid #30363d; border-radius: 6px; overflow: hidden; background: #04060c; }
+  #sky-canvas, #sky-canvas canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #sky-tip { display: none; position: absolute; z-index: 5; max-width: min(280px, calc(100% - 20px)); padding: 8px 10px; background: rgba(13,17,23,.94); border: 1px solid #30363d; border-radius: 6px; font-size: 13px; line-height: 1.45; pointer-events: none; }
+  #sky-tip .dim { color: #8b949e; }
+  #sky-tip .trad { color: #d2a8ff; font-size: 12px; }
+  #sky-readout { position: absolute; left: 10px; bottom: 8px; z-index: 4; max-width: calc(100% - 20px); font-size: 12px; color: #8b949e; background: rgba(13,17,23,.72); padding: 4px 8px; border-radius: 4px; pointer-events: none; }
+  #sky-readout b { color: #e6edf3; font-weight: 600; }
+  #sky-loading { display: none; position: absolute; inset: 0; z-index: 6; align-items: center; justify-content: center; background: rgba(4,6,12,.72); color: #e6edf3; font-size: 14px; }
+  /* Absolutely positioned, so width is shrink-to-fit: cap it at the wrap
+     and paint above the fullscreen button (z 6) so the open panel never
+     has its checkboxes blocked by it. */
+  #sky-opts { position: absolute; top: 8px; right: 8px; z-index: 7; max-width: calc(100% - 16px); background: rgba(13,17,23,.9); border: 1px solid #30363d; border-radius: 6px; font-size: 13px; }
+  #sky-opts summary { cursor: pointer; padding: 6px 10px; color: #e6edf3; }
+  #sky-overlays { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; padding: 4px 10px 10px; max-height: 46vh; overflow: auto; }
+  #sky-overlays label { display: flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer; }
+  #sky-overlays input { width: auto; margin: 0; flex: 0 0 auto; accent-color: #58a6ff; }
+  .sky-viewrow { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; padding: 2px 0 6px; border-bottom: 1px solid #21262d; margin-bottom: 4px; }
+  .sky-viewrow span { color: #8b949e; }
+  .sky-viewrow button { background: #0d1117; color: #8b949e; border: 1px solid #30363d; border-radius: 4px; padding: 3px 12px; font-size: 12px; cursor: pointer; }
+  .sky-viewrow button.on { color: #e6edf3; border-color: #58a6ff; background: #161d27; }
+  .sky-viewrow select { width: auto; flex: 1 1 auto; min-width: 0; padding: 4px 6px; font-size: 13px; }
+  .chart-cap { text-align: center; color: #6e7681; font-size: 12px; margin: 8px 0 4px; }
+  .chart-style { border-top: 1px solid #21262d; margin-top: 10px; padding: 8px 4px 0; text-align: left; }
+  .chart-style summary { cursor: pointer; color: #8b949e; font-size: 13px; }
+  .chart-style summary:hover { color: #e6edf3; }
+  .cs-sec { margin: 10px 0 4px; }
+  .cs-sec h4 { margin: 0 0 4px; font-size: 12px; font-weight: 600; color: #6e7681; text-transform: uppercase; letter-spacing: 0.06em; }
+  .cs-row { display: flex; align-items: center; gap: 10px; margin: 7px 0; font-size: 13px; }
+  .cs-lab { flex: 0 0 150px; color: #8b949e; }
+  .cs-row input[type=number] { flex: 1; min-width: 0; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #e6edf3; padding: 3px 8px; font-size: 13px; }
+  .chart-style #cs-reset { margin: 6px 0 4px; }
+  .angles { display: flex; gap: 32px; flex-wrap: wrap; margin-bottom: 10px; }
+  .angles .k { color: #8b949e; font-size: 13px; margin-right: 10px; }
+  .angles .v { font-weight: 600; font-size: 16px; }
+  .meta { color: #8b949e; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .tbl-scroll { overflow-x: auto; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #21262d; }
+  th { color: #8b949e; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.body { font-weight: 600; white-space: nowrap; }
+  .dim { color: #6e7681; }
+  .direct { color: #3fb950; }
+  .retro { color: #f85149; }
+  /* Magnitude glow: text-shadow strength follows the body's brightness
+     percentile vs its 1800–2300 norm (applied inline per cell). */
+  .mag-glow { font-weight: 600; }
+  /* Speed percentile indicator: dot colored red (minima) -> yellow -> green
+     (maxima) by the body's long-term |speed| distribution; hover for
+     percentile/z-score. */
+  .spdind { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+            margin-right: 7px; vertical-align: 1px; cursor: help; }
+  .ecl { color: #e8b339; font-weight: 600; }
+  /* Search tabs (Aspects / Stations). */
+  .checkrow { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+  .checkrow label {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 14px; color: #e6edf3; margin: 0; cursor: pointer;
+  }
+  .checkrow input { width: auto; margin: 0; accent-color: #238636; }
+  .rowhead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .rowhead .minis { display: flex; gap: 6px; }
+  button.mini { margin: 0; padding: 2px 10px; font-size: 12px; font-weight: 400; }
+  .btnrow { display: flex; gap: 8px; }
+  .progress { height: 6px; background: #21262d; border-radius: 3px; overflow: hidden; margin-top: 12px; }
+  .progress .bar { height: 100%; width: 0%; background: #58a6ff; transition: width 0.15s; }
+  .search-status { font-size: 13px; color: #8b949e; margin-top: 8px; min-height: 1.2em; }
+  .search-status.err { color: #f85149; }
+  .cond-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 6px; }
+  .cond-fields { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .cond-row select, .cond-row input { width: auto; flex: 0 1 auto; }
+  .cond-row input[type="number"] { width: 5.5em; }
+  .cond-group { border: 1px solid #21262d; border-radius: 8px; padding: 8px; margin-bottom: 8px; }
+  .cond-group-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #8b949e; margin-bottom: 6px; }
+  .cond-or { font-size: 11px; font-weight: 600; color: #d29922; margin: 2px 0 6px; }
+  .csv-wrap { display: flex; justify-content: flex-end; margin: 0 0 4px; }
+  .csv-btn { display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 4px 10px;
+    background: transparent; border: 1px solid #30363d; color: #e6edf3; border-radius: 6px;
+    font-size: 12px; font-weight: 400; cursor: pointer; }
+  .csv-btn:hover:not(:disabled) { background: #21262d; border-color: #3fb950; }
+  /* Dignity columns, lunations, lordship deep dive. */
+  #panel-table .stn-prev, #panel-table .stn-next { white-space: normal; min-width: 9em; }
+  .lords-opts { margin-bottom: 6px; }
+  .lords-opts select { width: auto; }
+  .lord-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 10px; margin-top: 10px; }
+  .lord-card { border: 1px solid #21262d; border-radius: 8px; padding: 10px 12px; }
+  .lord-card h4 { margin: 0 0 6px; font-size: 14px; }
+  .lord-card h5 { margin: 0 0 4px; font-size: 12px; color: #8b949e; }
+  .lord-card ul { margin: 0; padding-left: 16px; font-size: 12.5px; }
+  .lord-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 640px) { .lord-cols { grid-template-columns: 1fr; } }
+  .hint-panel { color: #6e7681; font-size: 14px; }
+  #panel-aspects h3, #panel-stations h3, #panel-ingresses h3 { font-size: 14px; margin: 18px 0 4px; color: #e6edf3; }
+  /* Hermetic lots section in the Table tab. */
+  #panel-table h3 { font-size: 14px; margin: 18px 0 4px; color: #e6edf3; }
+  .lots-opts { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 6px 0 2px; }
+  .lots-opts label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #8b949e; cursor: pointer; }
+  .lots-opts input { width: auto; margin: 0; accent-color: #238636; }
+  .lots-note { color: #8b949e; font-size: 13px; margin: 0 0 6px; }
+  .cat-filter { width: 100%; box-sizing: border-box; margin: 4px 0 8px; }
+  .cat-browser { max-height: 420px; overflow-y: auto; border: 1px solid #30363d; border-radius: 6px; padding: 6px 10px; }
+  .cat-group { margin-bottom: 8px; }
+  .cat-calc { font-size: 12px; color: #58a6ff; text-transform: uppercase; letter-spacing: .04em; margin: 6px 0 2px; }
+  .cat-row { display: block; font-size: 13px; padding: 2px 0 2px 2px; cursor: pointer; }
+  .cat-row input { width: auto; margin: 0 6px 0 0; accent-color: #238636; }
+  .cat-src { color: #8b949e; font-size: 12px; }
+  .cat-note { color: #58a6ff; cursor: help; }
+  td.formula { color: #8b949e; white-space: nowrap; }
+  /* Input panel: left navigation drawer. On desktop it is a persistent
+     sidebar in normal flow — opening it takes layout width and pushes the
+     main column right; collapsing slides it off-canvas with a negative
+     margin (fixed width, so the panel never reflows mid-animation) and
+     hides it from keyboard tab order via delayed visibility. On mobile
+     (<=640px) it becomes a true overlay drawer sliding in from the left
+     over a scrim. Closed by default; state persists. */
+  #input-card {
+    position: sticky; top: 0; z-index: 40;
+    flex: 0 0 auto; width: 360px; height: 100dvh;
+    margin: 0; border-radius: 0; border: none; border-right: 1px solid #30363d;
+    overflow-y: auto; overscroll-behavior: contain;
+    transition: margin-left .26s ease, visibility 0s;
+  }
+  #input-card:not(.open) {
+    margin-left: -360px; visibility: hidden;
+    transition: margin-left .26s ease, visibility 0s linear .26s;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #input-card, #input-card:not(.open), #input-card.open { transition: none; }
+  }
+  #drawer-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  #drawer-title { font-size: 16px; font-weight: 600; }
+  #input-hide {
+    display: block; margin: 0; padding: 2px 10px; background: transparent; border: none;
+    color: #8b949e; font-size: 20px; font-weight: 400; line-height: 1; cursor: pointer;
+  }
+  #input-hide:hover { color: #e6edf3; background: transparent; }
+  /* Hamburger toggle: fixed top-left, visible only while the drawer is closed. */
+  #input-fab {
+    display: block; position: fixed; top: 12px; left: 12px; z-index: 56; margin: 0;
+    padding: 8px 12px; font-size: 16px; line-height: 1; cursor: pointer;
+  }
+  #input-fab[hidden] { display: none; }
+  #scrim { display: none; }
+  /* Fixed log height at all widths: the drawer is side-anchored, but a
+     growing log still shifts the Calculate button between mousedown and
+     mouseup for a real mouse (e.g. a timezone re-derivation logging when the
+     lon field blurs). A stable height keeps hit-testing exact. */
+  #log { height: 150px; }
+  footer { color: #6e7681; font-size: 12px; margin-top: 24px; }
+  #clock-label { margin-left: 14px; font-size: 14px; color: #8b949e; cursor: pointer; white-space: nowrap; }
+  #clock-label input { width: auto; margin-right: 6px; accent-color: #238636; vertical-align: -1px; }
+  @media (min-width: 1600px) {
+    main { max-width: none; padding-left: 32px; padding-right: 32px; }
+    .chart-wrap svg { max-width: 900px; }
+  }
+  footer h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: #8b949e; margin: 16px 0 4px; font-weight: 600;
+  }
+  footer p { margin: 4px 0; }
+  footer a { color: #58a6ff; }
+  /* Planet cards (mobile table replacement); hidden on desktop. */
+  .planet-cards { display: none; }
+  /* Search-result cards (mobile table replacement); hidden on desktop. */
+  .asp-cards, .stn-cards, .stn-period-cards, .ing-cards { display: none; }
+  /* ---- Mobile (<=640px) ---- */
+  @media (max-width: 640px) {
+    body { font-size: 14px; }
+    main { padding: 14px 10px 48px; }
+    /* True overlay drawer: slides in from the left over the page + scrim. */
+    #input-card {
+      position: fixed; left: 0; top: 0; z-index: 60;
+      width: min(420px, 94vw); height: 100dvh; max-height: none;
+      margin-left: 0;
+      transform: translateX(-103%);
+      box-shadow: 12px 0 40px rgba(0,0,0,.5);
+      transition: transform .26s ease, visibility 0s linear .26s;
+    }
+    #input-card.open { transform: none; transition: transform .26s ease, visibility 0s; }
+    #input-card:not(.open) { margin-left: 0; transition: transform .26s ease, visibility 0s linear .26s; }
+    body.nav-open { overflow: hidden; }
+    #scrim {
+      display: block; position: fixed; inset: 0; z-index: 55;
+      background: rgba(0,0,0,.55); border: 0; padding: 0; margin: 0; cursor: default;
+    }
+    #scrim[hidden] { display: none; }
+    .card { padding: 14px; border-radius: 10px; }
+    .res-brand { font-size: 17px; }
+    /* Results header: stack controls */
+    .results-head { flex-direction: column; align-items: stretch; gap: 8px; }
+    .results-head .seg { align-self: flex-start; }
+    #share { margin: 0; align-self: stretch; text-align: center; }
+    /* Angles: tighter */
+    .angles { gap: 14px; margin-bottom: 8px; }
+    .angles .v { font-size: 15px; }
+    .meta { font-size: 12px; }
+    /* Table -> cards: 7 columns don't fit 393px */
+    #panel-table table { display: none; }
+    /* ...but the 4-column lots table does fit (it scrolls if it must). */
+    #panel-table .lots-table { display: table; }
+    .planet-cards { display: block; }
+    .planet-card {
+      border-bottom: 1px solid #21262d; padding: 10px 2px;
+    }
+    .planet-card:last-child { border-bottom: none; }
+    .pc-head {
+      display: flex; justify-content: space-between; align-items: baseline;
+      margin-bottom: 2px;
+    }
+    .pc-body { font-weight: 600; font-size: 14px; }
+    .pc-mot { font-size: 12px; font-weight: 600; }
+    .pc-lon { font-size: 15px; font-variant-numeric: tabular-nums; margin-bottom: 4px; }
+    .pc-meta {
+      display: flex; flex-wrap: wrap; gap: 4px 14px;
+      font-size: 12px; color: #8b949e; font-variant-numeric: tabular-nums;
+    }
+    .pc-meta .dim { color: #6e7681; }
+    /* Chart: full-bleed for maximum size */
+    .chart-wrap { margin: 0 -14px; padding: 4px 0 0; }
+    .chart-wrap svg { max-width: none; }
+    .chart-cap { font-size: 11px; padding: 0 4px; }
+    #dbgcopy { width: 100%; margin: 10px 0 0; padding: 12px; }
+    /* Tabs: equal shares of the row — four fixed-padding tabs overflow a
+       390px card and clip the last tab past the card edge. */
+    .tabs button {
+      flex: 1 1 0; min-width: 0; padding: 10px 4px; font-size: 15px;
+      text-align: center; white-space: nowrap;
+    }
+    /* Input: tighter grid */
+    .grid { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
+    /* Search tabs: checkbox chips with real touch targets */
+    #panel-aspects .checkrow, #panel-stations .checkrow, #panel-ingresses .checkrow {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
+    }
+    #panel-aspects .checkrow label, #panel-stations .checkrow label, #panel-ingresses .checkrow label {
+      border: 1px solid #21262d; border-radius: 8px; padding: 10px 12px;
+      font-size: 14px;
+    }
+    #panel-aspects .checkrow input, #panel-stations .checkrow input, #panel-ingresses .checkrow input {
+      width: 18px; height: 18px;
+    }
+    /* Search buttons: full-width stacked */
+    #panel-aspects .btnrow, #panel-stations .btnrow, #panel-ingresses .btnrow { flex-direction: column; }
+    #panel-aspects .btnrow button, #panel-stations .btnrow button, #panel-ingresses .btnrow button {
+      width: 100%; padding: 12px; margin: 0;
+    }
+    /* Condition rows stack full-width so every control stays tappable. */
+    .cond-row { flex-direction: column; align-items: stretch; }
+    .cond-row select, .cond-row input { width: 100%; }
+    .cond-row input[type="number"] { width: 100%; }
+    /* Search ranges: Start/End/Ephemeris stack full-width so the datetime
+       text ("1 Oct 2026 CE 02:08") is never truncated. */
+    #panel-aspects .grid, #panel-stations .grid, #panel-ingresses .grid { grid-template-columns: 1fr; }
+    /* Search results: tables -> cards */
+    #asp-results table, #stn-results table, #ing-results table { display: none; }
+    .asp-cards, .stn-cards, .stn-period-cards, .ing-cards { display: block; }
+    .asp-card, .stn-card, .sp-card, .ing-card {
+      border-bottom: 1px solid #21262d; padding: 10px 2px;
+    }
+    .asp-card:last-child, .stn-card:last-child, .sp-card:last-child, .ing-card:last-child { border-bottom: none; }
+    .ac-date { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; margin-bottom: 2px; }
+    .ac-line, .sc-line, .sp-line {
+      display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline;
+      font-size: 13px;
+    }
+    .ac-line .body, .sc-head .body, .sp-head .body { font-weight: 600; font-size: 14px; }
+    .sc-head, .sp-head {
+      display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px;
+    }
+    .sc-head .retro, .sc-head .direct { font-size: 12px; font-weight: 600; }
+    .sp-line { font-variant-numeric: tabular-nums; }
+    .sp-line .retro, .sp-line .direct { font-weight: 600; min-width: 74px; }
+    .sp-line .sp-k { font-weight: 600; min-width: 74px; }
+    #panel-aspects h3, #panel-stations h3, #panel-ingresses h3 { font-size: 15px; }
+    /* Sky viewer chrome: the overlays panel is absolutely positioned, so it
+       sizes shrink-to-fit — cap it at the wrap and drop to a single column
+       so long labels wrap instead of blowing past the viewport edge. */
+    #sky-opts { top: 6px; right: 6px; max-width: calc(100% - 12px); }
+    #sky-overlays { grid-template-columns: minmax(0, 1fr); max-height: 52dvh; }
+    #sky-overlays label { white-space: normal; }
+    .sky-viewrow { flex-wrap: wrap; }
+    /* Fullscreen button to bottom-right: clear of the opts panel in every
+       open/closed state, and clear of the readout. */
+    #sky-fsbtn { top: auto; bottom: 8px; right: 8px; }
+    #sky-readout { max-width: calc(100% - 76px); font-size: 11px; }
+    #sky-lockbtn { max-width: calc(100% - 130px); }
+    /* Animation: stack the absolute date range — two datetime-local inputs
+       never share a narrow row without clipping their segments. */
+    #anim-absolute { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<aside class="card" id="input-card" aria-label="Input panel">
+  <div id="drawer-head">
+    <span id="drawer-title">Inputs</span>
+    <button id="input-hide" type="button" aria-label="Hide input panel">&times;</button>
+  </div>
+    <div class="field">
+      <label>Date and time</label>
+      <div class="dt-row" role="group" aria-label="Date and time">
+        <span class="dtwrap">
+          <input id="dt-in" class="dtin" type="text" spellcheck="false" autocomplete="off" aria-label="Date and time">
+          <button id="dt-cal" class="dtcal" type="button" aria-haspopup="dialog" aria-label="Choose date and time">&#x25BE;</button>
+        </span>
+        <input id="dt-y" type="hidden">
+        <input id="dt-era" type="hidden">
+        <input id="dt-mo" type="hidden">
+        <input id="dt-d" type="hidden">
+        <input id="dt-h" type="hidden">
+        <input id="dt-mi" type="hidden">
+        <input id="dt-s" type="hidden">
+      </div>
+      <div class="skip-row" role="group" aria-label="Time step">
+        <button id="skip-minus" class="ghost" type="button" aria-label="Step backward">&minus;</button>
+        <input id="skip-n" type="number" min="1" step="1" value="1" aria-label="Step size">
+        <select id="skip-unit" aria-label="Step unit">
+          <option value="second">Second</option>
+          <option value="minute">Minute</option>
+          <option value="hour">Hour</option>
+          <option value="day" selected>Day</option>
+          <option value="week">Week</option>
+          <option value="month">Month</option>
+          <option value="year">Year</option>
+        </select>
+        <button id="skip-plus" class="ghost" type="button" aria-label="Step forward">+</button>
+      </div>
+      <small class="hint">Dates before 1582-10-15 use the Julian calendar. BCE dates are read as
+      local mean time at the site longitude — time zones did not exist yet. Range: 12999 BCE to 9999 CE.</small>
+    </div>
+    <div class="field">
+      <label for="tz">Timezone of time entered</label>
+      <select id="tz"></select>
+      <small class="hint" id="tz-name"></small>
+    </div>
+    <div style="position: relative; margin-top: 12px;">
+      <label for="city">Location — search city</label>
+      <input id="city" type="text" placeholder="e.g. Rome" autocomplete="off" spellcheck="false">
+      <div id="city-results"></div>
+      <div id="loc-label"></div>
+    </div>
+    <div style="margin-top: 12px;">
+      <button id="geolocate" class="ghost" type="button" style="margin-top:0; margin-left:0;">Use my location</button>
+    </div>
+    <details id="manual-loc">
+      <summary>Enter coordinates manually</summary>
+      <div class="grid" style="margin-top:10px;">
+        <div><label for="lat">Latitude (&deg;, +N / &minus;S)</label><input id="lat" type="number" step="any" placeholder="e.g. 33.45"></div>
+        <div><label for="lon">Longitude (&deg;, +E / &minus;W)</label><input id="lon" type="number" step="any" placeholder="e.g. -112.07"></div>
+      </div>
+    </details>
+    <button id="calc">Calculate</button>
+    <label id="clock-label"><input type="checkbox" id="clock-toggle">Live clock (1s)</label>
+    <div class="field" id="anim-field">
+      <label>Animation</label>
+      <div class="anim-row">
+        <select id="anim-mode" aria-label="Animation range mode">
+          <option value="absolute">Absolute date range</option>
+          <option value="relative">Relative range ahead</option>
+        </select>
+      </div>
+      <div id="anim-absolute" class="anim-row">
+        <input id="anim-start" type="datetime-local" aria-label="Animation start (UTC)">
+        <span class="dim">to</span>
+        <input id="anim-end" type="datetime-local" aria-label="Animation end (UTC)">
+      </div>
+      <div id="anim-relative" class="anim-row" style="display:none">
+        <input id="anim-n" type="number" min="1" step="1" value="40" aria-label="Relative amount">
+        <select id="anim-unit" aria-label="Relative unit">
+          <option value="minute">Minutes</option>
+          <option value="hour">Hours</option>
+          <option value="day" selected>Days</option>
+          <option value="week">Weeks</option>
+          <option value="month">Months</option>
+          <option value="year">Years</option>
+        </select>
+        <span class="dim">ahead</span>
+      </div>
+      <div class="anim-row">
+        <label class="anim-speed">Speed <select id="anim-speed" aria-label="Animation speed"></select></label>
+        <button id="anim-play" class="ghost" type="button">Play</button>
+        <button id="anim-stop" class="ghost" type="button">Stop</button>
+      </div>
+      <small class="hint">Absolute ranges are read as UTC. Playback recomputes the ephemeris as time advances.</small>
+      <div id="anim-status" class="hint"></div>
+    </div>
+    <div id="error"></div>
+    <div id="warn"></div>
+    <div id="fallback">
+      <button id="moshier" class="ghost">Calculate with built-in Moshier ephemeris instead</button>
+    </div>
+    <div id="log"></div>
+</aside>
+<main>
+  <div class="card" id="views">
+    <div id="views-head"></div>
+    <div class="tabs" role="tablist" aria-label="Views">
+      <button type="button" role="tab" data-tab="table" aria-selected="true">Table</button>
+      <button type="button" role="tab" data-tab="chart" aria-selected="false">Chart</button>
+      <button type="button" role="tab" data-tab="aspects" aria-selected="false">Aspects</button>
+      <button type="button" role="tab" data-tab="stations" aria-selected="false">Retrograde</button>
+      <button type="button" role="tab" data-tab="ingresses" aria-selected="false">Ingresses</button>
+      <button type="button" role="tab" data-tab="sky" aria-selected="false">Sky</button>
+    </div>
+    <div id="panel-table" role="tabpanel">
+      <p class="hint-panel">Enter a date and location above, then Calculate, to see planetary positions.</p>
+    </div>
+    <div id="panel-chart" role="tabpanel" style="display:none">
+      <p class="hint-panel">Enter a date and location above, then Calculate, to see the chart wheel.</p>
+    </div>
+    <div id="panel-sky" role="tabpanel" style="display:none">
+      <p class="hint-panel" id="sky-hint">Enter a date and location above, then Calculate, to see the sky in 3D. Drag to look around, scroll or pinch to zoom, hover for lore.</p>
+      <div id="sky-wrap" style="display:none">
+        <div id="sky-canvas"></div>
+        <div id="sky-tip"></div>
+        <div id="sky-readout"></div>
+        <div id="sky-loading"></div>
+        <details id="sky-opts"><summary>Options</summary><div id="sky-overlays"></div></details>
+      </div>
+    </div>
+    <div id="panel-aspects" role="tabpanel" style="display:none">
+      <p class="hint-panel">Find exact aspect perfectings: moments when the angular separation of
+      two bodies equals the target angle precisely (0&deg; orb).</p>
+      <div class="grid">
+        <div class="field">
+          <label>Start (UTC)</label>
+          <div class="dt-row" role="group" aria-label="Start (UTC)">
+            <span class="dtwrap">
+          <input id="asp-start-in" class="dtin" type="text" spellcheck="false" autocomplete="off" aria-label="Start date and time">
+          <button id="asp-start-cal" class="dtcal" type="button" aria-haspopup="dialog" aria-label="Choose date and time">&#x25BE;</button>
+        </span>
+        <input id="asp-start-y" type="hidden">
+        <input id="asp-start-era" type="hidden">
+        <input id="asp-start-mo" type="hidden">
+        <input id="asp-start-d" type="hidden">
+            <input id="asp-start-h" type="hidden">
+            <input id="asp-start-mi" type="hidden">
+          </div>
+        </div>
+        <div class="field">
+          <label>End (UTC)</label>
+          <div class="dt-row" role="group" aria-label="End (UTC)">
+            <span class="dtwrap">
+          <input id="asp-end-in" class="dtin" type="text" spellcheck="false" autocomplete="off" aria-label="End date and time">
+          <button id="asp-end-cal" class="dtcal" type="button" aria-haspopup="dialog" aria-label="Choose date and time">&#x25BE;</button>
+        </span>
+        <input id="asp-end-y" type="hidden">
+        <input id="asp-end-era" type="hidden">
+        <input id="asp-end-mo" type="hidden">
+        <input id="asp-end-d" type="hidden">
+            <input id="asp-end-h" type="hidden">
+            <input id="asp-end-mi" type="hidden">
+          </div>
+        </div>
+        <div class="field">
+          <label for="asp-engine">Ephemeris</label>
+          <select id="asp-engine">
+            <option value="swiss">Swiss Ephemeris</option>
+            <option value="moshier">Moshier (built-in)</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <div class="rowhead"><label>Aspects</label>
+          <span class="minis"><button type="button" class="mini ghost" id="asp-tall">all</button><button type="button" class="mini ghost" id="asp-tnone">none</button></span>
+        </div>
+        <div class="checkrow" id="asp-aspects"></div>
+      </div>
+      <div class="field">
+        <div class="rowhead"><label>Bodies</label>
+          <span class="minis"><button type="button" class="mini ghost" id="asp-ball">all</button><button type="button" class="mini ghost" id="asp-bnone">none</button></span>
+        </div>
+        <div class="checkrow" id="asp-bodies"></div>
+      </div>
+      <div class="field">
+        <div class="rowhead"><label>Conditions (optional)</label>
+          <span class="minis"><button type="button" class="mini ghost" id="asp-cond-add">add group</button></span>
+        </div>
+        <div id="asp-conds"></div>
+        <small class="hint">Every group must hold at the perfecting instant (groups are ANDed); within a
+        group, any one condition suffices (OR). A and B are the pair&rsquo;s first and second body. Example:
+        Neptune &#9740; Pluto with Uranus &ldquo;co-present with B OR in sign-based opposition to B&rdquo; = base bodies
+        Neptune + Pluto, aspect Conjunction, plus one group holding those two alternatives. Heliacal phase is judged by elongation from the Sun at that instant:
+        within 8.5&deg; combust, within 15&deg; under the beams, west of the Sun = morning, east = evening.</small>
+      </div>
+      <div class="field">
+        <div class="checkrow"><label><input type="checkbox" id="asp-eclipses">Eclipses only <span class="dim">(new &amp; full moons)</span></label></div>
+      </div>
+      <div class="btnrow">
+        <button id="asp-go" type="button">Search</button>
+        <button id="asp-cancel" type="button" class="ghost" disabled>Cancel</button>
+      </div>
+      <div class="progress" id="asp-prog" hidden><div class="bar"></div></div>
+      <div class="search-status" id="asp-status"></div>
+      <div id="asp-results"></div>
+    </div>
+    <div id="panel-stations" role="tabpanel" style="display:none">
+      <p class="hint-panel">Find retrograde periods: station to station, extended to the
+      shadow ingress and egress, with the Sun event inside the loop.</p>
+      <div class="grid">
+        <div class="field">
+          <label>Start (UTC)</label>
+          <div class="dt-row" role="group" aria-label="Start (UTC)">
+            <span class="dtwrap">
+          <input id="stn-start-in" class="dtin" type="text" spellcheck="false" autocomplete="off" aria-label="Start date and time">
+          <button id="stn-start-cal" class="dtcal" type="button" aria-haspopup="dialog" aria-label="Choose date and time">&#x25BE;</button>
+        </span>
+        <input id="stn-start-y" type="hidden">
+        <input id="stn-start-era" type="hidden">
+        <input id="stn-start-mo" type="hidden">
+        <input id="stn-start-d" type="hidden">
+            <input id="stn-start-h" type="hidden">
+            <input id="stn-start-mi" type="hidden">
+          </div>
+        </div>
+        <div class="field">
+          <label>End (UTC)</label>
+          <div class="dt-row" role="group" aria-label="End (UTC)">
+            <span class="dtwrap">
+          <input id="stn-end-in" class="dtin" type="text" spellcheck="false" autocomplete="off" aria-label="End date and time">
+          <button id="stn-end-cal" class="dtcal" type="button" aria-haspopup="dialog" aria-label="Choose date and time">&#x25BE;</button>
+        </span>
+        <input id="stn-end-y" type="hidden">
+        <input id="stn-end-era" type="hidden">
+        <input id="stn-end-mo" type="hidden">
+        <input id="stn-end-d" type="hidden">
+            <input id="stn-end-h" type="hidden">
+            <input id="stn-end-mi" type="hidden">
+          </div>
+        </div>
+        <div class="field">
+          <label for="stn-engine">Ephemeris</label>
+          <select id="stn-engine">
+            <option value="swiss">Swiss Ephemeris</option>
+            <option value="moshier">Moshier (built-in)</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <div class="rowhead"><label>Planets</label>
+          <span class="minis"><button type="button" class="mini ghost" id="stn-pall">all</button><button type="button" class="mini ghost" id="stn-pnone">none</button></span>
+        </div>
+        <div class="checkrow" id="stn-planets"></div>
+      </div>
+      <div class="field">
+        <div class="rowhead"><label>Signs</label>
+          <span class="minis"><button type="button" class="mini ghost" id="stn-sall">all</button><button type="button" class="mini ghost" id="stn-snone">none</button></span>
+        </div>
+        <div class="checkrow" id="stn-signs"></div>
+        <p class="hint-panel">A period matches when either station &mdash; retrograde or
+        direct &mdash; falls in the sign. No sign checked = no filter.</p>
+      </div>
+      <div class="btnrow">
+        <button id="stn-go" type="button">Search</button>
+        <button id="stn-cancel" type="button" class="ghost" disabled>Cancel</button>
+      </div>
+      <div class="progress" id="stn-prog" hidden><div class="bar"></div></div>
+      <div class="search-status" id="stn-status"></div>
+      <div id="stn-results"></div>
+    </div>
+    <div id="panel-ingresses" role="tabpanel" style="display:none">
+      <p class="hint-panel">Find sign ingresses: moments when a body crosses a sign boundary
+      (0&deg; of a sign), in direct or retrograde motion.</p>
+      <div class="grid">
+        <div class="field">
+          <label>Start (UTC)</label>
+          <div class="dt-row" role="group" aria-label="Start (UTC)">
+            <span class="dtwrap">
+          <input id="ing-start-in" class="dtin" type="text" spellcheck="false" autocomplete="off" aria-label="Start date and time">
+          <button id="ing-start-cal" class="dtcal" type="button" aria-haspopup="dialog" aria-label="Choose date and time">&#x25BE;</button>
+        </span>
+        <input id="ing-start-y" type="hidden">
+        <input id="ing-start-era" type="hidden">
+        <input id="ing-start-mo" type="hidden">
+        <input id="ing-start-d" type="hidden">
+            <input id="ing-start-h" type="hidden">
+            <input id="ing-start-mi" type="hidden">
+          </div>
+        </div>
+        <div class="field">
+          <label>End (UTC)</label>
+          <div class="dt-row" role="group" aria-label="End (UTC)">
+            <span class="dtwrap">
+          <input id="ing-end-in" class="dtin" type="text" spellcheck="false" autocomplete="off" aria-label="End date and time">
+          <button id="ing-end-cal" class="dtcal" type="button" aria-haspopup="dialog" aria-label="Choose date and time">&#x25BE;</button>
+        </span>
+        <input id="ing-end-y" type="hidden">
+        <input id="ing-end-era" type="hidden">
+        <input id="ing-end-mo" type="hidden">
+        <input id="ing-end-d" type="hidden">
+            <input id="ing-end-h" type="hidden">
+            <input id="ing-end-mi" type="hidden">
+          </div>
+        </div>
+        <div class="field">
+          <label for="ing-engine">Ephemeris</label>
+          <select id="ing-engine">
+            <option value="swiss">Swiss Ephemeris</option>
+            <option value="moshier">Moshier (built-in)</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <div class="rowhead"><label>Bodies</label>
+          <span class="minis"><button type="button" class="mini ghost" id="ing-ball">all</button><button type="button" class="mini ghost" id="ing-bnone">none</button></span>
+        </div>
+        <div class="checkrow" id="ing-bodies"></div>
+      </div>
+      <div class="field">
+        <div class="rowhead"><label>Signs entered</label>
+          <span class="minis"><button type="button" class="mini ghost" id="ing-sall">all</button><button type="button" class="mini ghost" id="ing-snone">none</button></span>
+        </div>
+        <div class="checkrow" id="ing-signs"></div>
+        <p class="hint-panel">Only ingresses into the checked signs are shown.
+        No sign checked = no filter.</p>
+      </div>
+      <div class="btnrow">
+        <button id="ing-go" type="button">Search</button>
+        <button id="ing-cancel" type="button" class="ghost" disabled>Cancel</button>
+      </div>
+      <div class="progress" id="ing-prog" hidden><div class="bar"></div></div>
+      <div class="search-status" id="ing-status"></div>
+      <div id="ing-results"></div>
+    </div>
+  </div>
+
+  <footer>
+    <h2>Method</h2>
+    <p>Positions are geocentric, tropical zodiac. Speed is in ecliptic longitude; its sign
+    gives direct/retrograde motion. Houses: whole-sign. Dates before 1582-10-15 use the
+    Julian calendar. BCE dates back to 12999 BCE are supported: they are read as local mean
+    time at the site longitude (time zones did not exist yet) and always use the Swiss
+    Ephemeris data files, never the built-in approximation. Angles can be shown as degrees/arcminutes/arcseconds or decimal degrees.
+    The Aspects tab finds exact (0&deg; orb) perfectings by bracketing sign changes of the
+    wrapped angular separation on a coarse grid and refining with secant/bisection; the
+    grid step adapts to the fastest selected pair (5 days with the Moon in play, up to
+    120 days for outer planets — a step keeping the separation change under 45&deg;
+    provably brackets every transverse root). The
+    Retrograde tab scans speed-zero crossings the same way on a 5-day grid and
+    groups them into shadow-extended periods. The
+    Ingresses tab finds sign-boundary crossings on a grid sized to the fastest
+    selected body (under 15&deg; of motion per step, so no boundary is skipped).
+    Aspect searches accept optional conditions (judged at the perfecting
+    instant; groups are ANDed, conditions within a group are ORed): signs of the pair or any other body by sign, traditional ruler,
+    element, quadruplicity, or co-presence; extra aspects by orb or by whole
+    sign; direction of motion; speed percentile against 1800&ndash;2300 statistics;
+    and heliacal phase by solar elongation (combust within 8.5&deg;, under the
+    beams within 15&deg;, west of the Sun = morning, east = evening).
+    Search ranges are unbounded — outer-planet aspects over centuries are fine,
+    though very long ranges take a while to scan. Every results table has a CSV
+    download button at its top.
+    The positions table also shows each planet&rsquo;s previous and next station
+    (Mercury&ndash;Pluto, scanned over a window set by Mars — the longest station
+    cycle at &plusmn;850 days), the bracketing
+    new/full moons, and — for the seven classical planets — the decan lord
+    (Chaldean order, or the Indian triplicity-domicile sequence), Egyptian bound
+    lord, Dorothean triplicity lords (by day/night sect), exaltation lord, and
+    the Dodecatemoria (D12) and Novenaria (D9) sub-lords. The lordship deep dive
+    below the lots gathers, for each classical planet, the lords over it and
+    everything it rules — domicile, exaltation, decan, bound, triplicity,
+    D12/D9 lordship over the other classical planets, the angles and the lots,
+    plus whole-sign houses ruled.</p>
+    <h2>Data</h2>
+    <p>Ephemeris files (.se1) are fetched on demand from
+    <a href="https://github.com/aloistr/swisseph/tree/master/ephe">aloistr/swisseph</a>
+    and cached in your browser (IndexedDB) — nothing leaves your machine.
+    City data &copy; GeoNames (CC-BY).</p>
+    <h2>License</h2>
+    <p>The planetary engine is the <a href="https://www.astro.com/swisseph/">Swiss Ephemeris</a>
+    C library &copy; 1997&ndash;2021 Astrodienst AG, used here under the
+    <a href="https://www.gnu.org/licenses/agpl-3.0.html">GNU Affero General Public License v3</a>;
+    Trigon&rsquo;s own code is licensed under the same terms.
+    Complete corresponding source (C sources, Emscripten build script, app sources, data generators):
+    <a href="./source/trigon-source.zip">trigon-source.zip</a>.
+    Upstream ephemeris source: <a href="https://github.com/aloistr/swisseph">aloistr/swisseph</a>.</p>
+  </footer>
+</main>
+<button id="input-fab" type="button" aria-controls="input-card" aria-expanded="false" aria-label="Show input panel">&#9776;</button>
+<div id="scrim" hidden></div>
+<script src="./vendor/tz.min.js"></script>
+<script type="module" src="./app.js"></script>
+</body>
+</html>

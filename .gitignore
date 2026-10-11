@@ -1,0 +1,11 @@
+node_modules/
+package-lock.json
+ephe/
+# Raw GeoNames downloads (re-fetchable; see data/README.md). The built
+# data/cities.json and site/data/cities.json stay tracked.
+data/cities5000.zip
+data/cities5000.txt
+data/countryInfo.txt
+__pycache__/
+perf/*.png
+.env

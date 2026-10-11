@@ -1,0 +1,1 @@
+{"description":"Pinned build/test tooling for Trigon. The VM image outside ~ is replaced on runtime updates, so global installs vanish; project-local deps under ~/workspace persist. Run `npm install` here (test.sh does it automatically when tsc is missing).","devDependencies":{"typescript":"7.0.2"},"name":"trigon-tools","private":true}

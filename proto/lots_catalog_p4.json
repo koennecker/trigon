@@ -1,0 +1,670 @@
+[
+  [
+    "Opportunity",
+    [],
+    "Asc",
+    "Sun",
+    "Saturn",
+    "reverse",
+    "O1",
+    "",
+    "Hellenistic",
+    "MS 1B; dubious"
+  ],
+  [
+    "Parents",
+    [],
+    "Asc",
+    "Moon",
+    "Sun",
+    "reverse",
+    "O1",
+    "",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "Power",
+    [],
+    "Asc",
+    "Saturn",
+    "Sun",
+    "fixed",
+    "FM",
+    "",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "Punishment (Hellenistic)",
+    [
+      "Justice"
+    ],
+    "Asc",
+    "Saturn",
+    "Mercury",
+    "reverse",
+    "MSL",
+    "",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "Purchase 1A",
+    [],
+    "Asc",
+    "Mercury",
+    "Venus",
+    "reverse",
+    "O1",
+    "",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "Purchase 1B",
+    [],
+    "Asc",
+    "Venus",
+    "Mercury",
+    "reverse",
+    "MSP",
+    "MSV, MSR",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "Purchase 2A",
+    [],
+    "Asc",
+    "Venus",
+    "Mars",
+    "reverse",
+    "O2",
+    "",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "Purchase 2B",
+    [],
+    "Asc",
+    "Mars",
+    "Venus",
+    "reverse",
+    "O1",
+    "",
+    "Hellenistic",
+    "MS 1B; dubious"
+  ],
+  [
+    "Releaser",
+    [],
+    "Asc",
+    "Moon",
+    "Syzygy",
+    "fixed",
+    "VV",
+    "GI, Q, R",
+    "Hellenistic",
+    "Syzygy is the prenatal lunation"
+  ],
+  [
+    "Reward 1",
+    [],
+    "Asc",
+    "Jupiter",
+    "Saturn",
+    "reverse",
+    "O1",
+    "MSL, MSP, MSV",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "Reward 2A",
+    [],
+    "Asc",
+    "Venus",
+    "Mercury",
+    "reverse",
+    "O2",
+    "MSV",
+    "Hellenistic",
+    "Multiple"
+  ],
+  [
+    "Reward 2B",
+    [],
+    "Asc",
+    "Mercury",
+    "Venus",
+    "reverse",
+    "MSL",
+    "",
+    "Hellenistic",
+    "Dubious"
+  ],
+  [
+    "Reward 3",
+    [],
+    "IC",
+    "rulerIC",
+    "rulerIC",
+    "fixed",
+    "MSV",
+    "",
+    "Hellenistic",
+    "IC from its own domicile lord: the lord's arc from the IC (formula IC + rulerIC - rulerIC in the source table reduces to the IC itself; see note)",
+    "Source table gives IC + Ruler IC - Ruler IC; transcribed as attested"
+  ],
+  [
+    "Rulership & Authority 1",
+    [],
+    "Asc",
+    "Moon",
+    "Mars",
+    "reverse",
+    "GI",
+    "Q, R",
+    "Hellenistic, Medieval",
+    ""
+  ],
+  [
+    "Rulership 1",
+    [],
+    "Asc",
+    "Venus",
+    "Jupiter",
+    "reverse",
+    "O1",
+    "MSP, MSV",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "Rulership 2",
+    [],
+    "Asc",
+    "Venus",
+    "Saturn",
+    "reverse",
+    "MSP",
+    "MSR, MSV",
+    "Hellenistic",
+    "Dubious"
+  ],
+  [
+    "Sale 1",
+    [],
+    "Asc",
+    "Moon",
+    "Mercury",
+    "reverse",
+    "O1",
+    "MSL, MSP, MSV",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "Sale 2",
+    [],
+    "Asc",
+    "Mars",
+    "Venus",
+    "reverse",
+    "O2",
+    "MSR, MSP, MSV",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "Ship-Owning",
+    [],
+    "Asc",
+    "Mercury",
+    "Saturn",
+    "reverse",
+    "O1",
+    "MSP, MSV",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "Siblings",
+    [
+      "Brothers"
+    ],
+    "Asc",
+    "Jupiter",
+    "Saturn",
+    "reverse",
+    "DS",
+    "VV, PA, FM, O2, MSL, MSP, MSV, BA, SB, GI, Q, R",
+    "Hellenistic, Medieval",
+    "Reversal per VV, FM"
+  ],
+  [
+    "Siblings (Firmicus)",
+    [],
+    "Asc",
+    "Sun",
+    "Mercury",
+    "fixed",
+    "FM",
+    "",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "Slaves (Dorotheus)",
+    [],
+    "Asc",
+    "Moon",
+    "Mercury",
+    "reverse",
+    "DS",
+    "HT, FM, BA, SB, GI, Q, R",
+    "Hellenistic, Medieval",
+    "Reversal per DS, O2, MSL, BA, Q"
+  ],
+  [
+    "Slaves (Hephaistio)",
+    [],
+    "Asc",
+    "Fortune",
+    "Mercury",
+    "reverse",
+    "HT",
+    "BA, GI, Q",
+    "Hellenistic, Medieval",
+    "Reversal per BA, GI, Q"
+  ],
+  [
+    "Slaves 3",
+    [],
+    "Asc",
+    "Moon",
+    "Mars",
+    "reverse",
+    "O1",
+    "MSP, MSV",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "Slaves 4A",
+    [],
+    "Asc",
+    "Mercury",
+    "Mars",
+    "reverse",
+    "MSP",
+    "",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "Slaves 4B",
+    [],
+    "Asc",
+    "Mercury",
+    "Sun",
+    "reverse",
+    "MSV",
+    "",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "Siblings (Number)",
+    [],
+    "Asc",
+    "Jupiter",
+    "Mercury",
+    "fixed",
+    "DS",
+    "BA, SB, GI",
+    "Hellenistic, Medieval",
+    "Source table spells 'Sliblings'; formula differs from Siblings (Brothers)"
+  ],
+  [
+    "Sowing",
+    [
+      "Conception"
+    ],
+    "Asc",
+    "Mars",
+    "Sun",
+    "reverse",
+    "MSL",
+    "",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "Spirit",
+    [
+      "Daimon",
+      "Fate",
+      "The Hidden"
+    ],
+    "Asc",
+    "Sun",
+    "Moon",
+    "reverse",
+    "VV",
+    "VV, FM, PA, O2, MSL, MSP, MSV, SB, GI, Q, R",
+    "Hellenistic, Medieval",
+    "Hermetic lot (Paulus)"
+  ],
+  [
+    "Strength",
+    [],
+    "Asc",
+    "MC",
+    "Sun",
+    "reverse",
+    "O2",
+    "MSP, MSV",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "Strength of the Body",
+    [],
+    "Asc",
+    "Jupiter",
+    "Moon",
+    "fixed",
+    "FM",
+    "",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "Substance and Possessions",
+    [],
+    "Asc",
+    "Jupiter",
+    "Mercury",
+    "fixed",
+    "FM",
+    "",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "The Creditor",
+    [],
+    "Asc",
+    "Mercury",
+    "Saturn",
+    "fixed",
+    "MSL",
+    "",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "The Fugitive",
+    [],
+    "Asc",
+    "Mars",
+    "Mercury",
+    "reverse",
+    "MSL",
+    "MSP, MSV",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "The Husband",
+    [],
+    "Asc",
+    "Venus",
+    "Mars",
+    "reverse",
+    "FM",
+    "",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "The Master",
+    [],
+    "Asc",
+    "Sun",
+    "Venus",
+    "reverse",
+    "MSL",
+    "MSP, MSV",
+    "Hellenistic",
+    "Reversal per MSP, MSV"
+  ],
+  [
+    "Theft (Olympiodorus)",
+    [
+      "Thieves"
+    ],
+    "Asc",
+    "Mars",
+    "Mercury",
+    "reverse",
+    "O1",
+    "O2, MSP, MSV",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "Theft (Valens)",
+    [],
+    "Saturn",
+    "Mars",
+    "Mercury",
+    "reverse",
+    "VV",
+    "",
+    "Hellenistic",
+    "Personal point is Saturn"
+  ],
+  [
+    "Time of Children",
+    [],
+    "Asc",
+    "Jupiter",
+    "Mars",
+    "fixed",
+    "DS",
+    "SB, GI, Q, R",
+    "Hellenistic, Medieval",
+    ""
+  ],
+  [
+    "Travel",
+    [
+      "Living Abroad"
+    ],
+    "Asc",
+    "h9",
+    "ruler9",
+    "fixed",
+    "MSL",
+    "BA, SB, GI, Q, R",
+    "Hellenistic, Medieval",
+    "9th is the whole-sign 9th cusp; ruler9 its domicile lord"
+  ],
+  [
+    "Travel (Firmicus)",
+    [
+      "Living Abroad"
+    ],
+    "Asc",
+    "Mars",
+    "Sun",
+    "reverse",
+    "FM",
+    "O2, MSL, MSP, MSV",
+    "Hellenistic, Medieval",
+    "Reversal per O1, MSL, MSP, MSV"
+  ],
+  [
+    "Underground Things A",
+    [
+      "Properties"
+    ],
+    "Asc",
+    "Saturn",
+    "Venus",
+    "reverse",
+    "O2",
+    "MSL, MSP, MSV",
+    "Hellenistic",
+    "MS 2A; multiple. Reversal per MSP, MSV"
+  ],
+  [
+    "Underground Things B",
+    [
+      "Properties"
+    ],
+    "Asc",
+    "Mars",
+    "Venus",
+    "reverse",
+    "O2",
+    "",
+    "Hellenistic",
+    "MS 2B, 2L; dubious"
+  ],
+  [
+    "Underground Things C",
+    [
+      "Properties"
+    ],
+    "Asc",
+    "Venus",
+    "Mars",
+    "reverse",
+    "O1",
+    "",
+    "Hellenistic",
+    "MS 1B; dubious"
+  ],
+  [
+    "Victory",
+    [
+      "Prosperity & Aid"
+    ],
+    "Asc",
+    "Jupiter",
+    "Spirit",
+    "reverse",
+    "PA",
+    "O2, MSL, MSP, MSV, GI, RD, Q, R",
+    "Hellenistic, Medieval, Hermetic, Mundane",
+    "Hermetic lot (Paulus)"
+  ],
+  [
+    "Victory (Olympiodorus)",
+    [],
+    "Asc",
+    "Mars",
+    "Venus",
+    "reverse",
+    "O1",
+    "",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "Waters",
+    [],
+    "Asc",
+    "Saturn",
+    "Venus",
+    "reverse",
+    "O2",
+    "",
+    "Hellenistic",
+    ""
+  ],
+  [
+    "Wealth A",
+    [],
+    "Asc",
+    "Sun",
+    "Jupiter",
+    "reverse",
+    "O2",
+    "MSP, MSV",
+    "Hellenistic",
+    "Multiple"
+  ],
+  [
+    "Wealth B",
+    [],
+    "Asc",
+    "Sun",
+    "Saturn",
+    "reverse",
+    "MSL",
+    "",
+    "Hellenistic",
+    "Dubious"
+  ],
+  [
+    "Wedding",
+    [
+      "Arrangement and Facilitation of Marriage"
+    ],
+    "Venus",
+    "Moon",
+    "Sun",
+    "fixed",
+    "DS",
+    "SB, GI",
+    "Hellenistic, Medieval",
+    "Personal point is Venus"
+  ],
+  [
+    "Basis",
+    [
+      "Foundation"
+    ],
+    "Asc",
+    "Fortune",
+    "Spirit",
+    "reverse",
+    "PA",
+    "",
+    "Hellenistic, Medieval",
+    "Hermetic lot: Paulus (day Fortune - Spirit, night reversed). The catalog Basis (Valens) entry carries the below-horizon rule."
+  ],
+  [
+    "Exaltation (Paulus)",
+    [],
+    "Asc",
+    {
+      "day": [
+        [
+          "fix",
+          19
+        ],
+        "Sun"
+      ],
+      "night": [
+        [
+          "fix",
+          33
+        ],
+        "Moon"
+      ]
+    },
+    null,
+    "sectPair",
+    "PA",
+    "",
+    "Hellenistic, Medieval",
+    "Hermetic lot (Paulus): from 19 Aries by day, 3 Taurus by night"
+  ]
+]

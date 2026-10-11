@@ -1,0 +1,4 @@
+# Playwright for the E2E suites. Install browsers once with:
+#   playwright install chromium
+# ...or point E2E_CHROME_PATH at an existing Chromium/Chrome.
+playwright
