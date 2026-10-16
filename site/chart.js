@@ -37,6 +37,11 @@
 const CX = 350, CY = 350;
 const VB = 700; // viewBox size (square, center CX,CY)
 
+// Multi-wheel charts (biwheel, triwheel, ...): renderChartSVG accepts
+// opts.outerWheels = [{out, label}]. The root wheel renders unchanged; the
+// viewBox expands and each outer wheel gets a ring in the margin showing
+// its 10 planet glyphs at their longitudes against the root's Ascendant
+// reference. Outer wheels carry no houses or aspects.
 // --- Chart style customization ---
 // Every radius, glyph size, and line width the wheel renderers use is a
 // style parameter with a descriptor (label, range, default). The Customize
@@ -516,8 +521,50 @@ export function renderChartSVG(out, opts = {}) {
   });
   s += aspectSVG;
 
+  // --- outer wheels (biwheel, triwheel, ...): rings in the expanded margin ---
+  const outerWheels = opts.outerWheels || [];
+  let vbX = 0, vbY = 0, vbS = VB;
+  if (outerWheels.length > 0) {
+    const margin = 50 * outerWheels.length;
+    vbX = -margin; vbY = -margin; vbS = VB + 2 * margin;
+    outerWheels.forEach((w, wi) => {
+      const rRing = st.rOut + 35 + wi * 50;   // the wheel's circle
+      const rGlyph = rRing + 18;               // planet glyph ring
+      s += `<circle cx="${CX}" cy="${CY}" r="${rRing}" fill="none" stroke="#8b949e" stroke-width="1.5"/>`;
+      // 10 planet glyphs at their longitudes, same Ascendant reference as root
+      const pts = [];
+      for (let i = 0; i < 10; i++) {
+        pts.push({ lon: norm360(w.out[i * 6]), glyph: PLANET_GLYPHS[i],
+                   color: PLANET_COLORS[i], retro: w.out[i * 6 + 3] < 0 });
+      }
+      // minimal declutter: sort by longitude, enforce 3.5° separation
+      pts.sort((a, b) => a.lon - b.lon);
+      for (let k = 1; k < pts.length; k++) {
+        let d = pts[k].lon - pts[k - 1].lon;
+        if (d < 0) d += 360;
+        if (d < 3.5 && d > 0) pts[k].lon = pts[k - 1].lon + 3.5;
+      }
+      for (const p of pts) {
+        const [x, y] = P(rGlyph, p.lon);
+        s += text(x, y, p.glyph + TVS, 13, p.color);
+        if (p.retro) {
+          const [rx, ry] = P(rGlyph - 12, p.lon);
+          s += text(rx, ry, 'R', 8, '#8b949e');
+        }
+      }
+      // wheel label at the top of its ring
+      if (w.label) {
+        const [lx, ly] = P(rRing, ref + 90);
+        s += text(lx, ly, w.label, 11, '#8b949e');
+      }
+    });
+  }
+
   lastDbg = dbg;
-  return `<svg viewBox="0 0 ${VB} ${VB}" role="img" aria-label="Whole-sign horoscope wheel">`
+  const nW = 1 + outerWheels.length;
+  const ariaLabel = nW === 1 ? 'Whole-sign horoscope wheel'
+    : `Whole-sign horoscope wheel with ${outerWheels.length} outer wheel${outerWheels.length === 1 ? '' : 's'}`;
+  return `<svg viewBox="${vbX} ${vbY} ${vbS} ${vbS}" role="img" aria-label="${ariaLabel}">`
        + `<g font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif">${s}</g></svg>`;
 }
 

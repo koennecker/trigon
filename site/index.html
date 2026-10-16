@@ -576,8 +576,19 @@
     </details>
     <button id="calc">Calculate</button>
     <label id="clock-label"><input type="checkbox" id="clock-toggle">Live clock (1s)</label>
+    <div class="field" id="wheels-field" style="margin-top:14px;">
+      <label>Outer wheels <small class="hint" style="display:inline">(biwheel, triwheel&hellip;)</small></label>
+      <div id="outer-panels"></div>
+      <button id="add-wheel" class="ghost" type="button" style="margin-top:6px;">+ Add outer wheel</button>
+      <small class="hint">Outer wheels show transits etc. against the root chart. Times are UTC.</small>
+    </div>
     <div class="field" id="anim-field">
       <label>Animation</label>
+      <div class="anim-row" id="anim-target-row" role="radiogroup" aria-label="Animation target">
+        <span class="dim">Target:</span>
+        <label><input type="radio" name="anim-target" value="0" checked> Root</label>
+        <span id="anim-target-wheels"></span>
+      </div>
       <div class="anim-row">
         <select id="anim-mode" aria-label="Animation range mode">
           <option value="absolute">Absolute date range</option>

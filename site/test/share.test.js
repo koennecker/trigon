@@ -2,17 +2,18 @@
 // Run: node --test test/share.test.js  (from site/)
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { shareState, parseShareHashString, shareLink } from '../share.js';
+import { shareState, shareStates, parseShareHashString, shareLink, shareLinks } from '../share.js';
 import { jdFromCal, JD_UNIX_EPOCH } from '../search.js';
 import { BCE_MIN_ASTRO } from '../dateapi.js';
 
 const BCE_MIN_MS = (jdFromCal(BCE_MIN_ASTRO, 1, 1, 0) - JD_UNIX_EPOCH) * 86400000;
 const parse = h => parseShareHashString(h, BCE_MIN_MS);
+const parse1 = h => { const a = parse(h); return a && a.length === 1 ? a[0] : null; };
 
 describe('compact pack round-trip', () => {
   it('round-trips a modern instant', () => {
     const lat = 40.7128, lon = -74.006, utcMs = 1787616000000;
-    const back = parse(shareState(lat, lon, utcMs));
+    const back = parse1(shareState(lat, lon, utcMs));
     assert.ok(back);
     assert.ok(Math.abs(back.lat - lat) < 1e-4);
     assert.ok(Math.abs(back.lon - lon) < 1e-4);
@@ -23,7 +24,7 @@ describe('compact pack round-trip', () => {
   });
   it('round-trips extremes', () => {
     for (const [lat, lon] of [[90, 180], [-90, -180], [0, 0]]) {
-      const back = parse(shareState(lat, lon, 0));
+      const back = parse1(shareState(lat, lon, 0));
       assert.ok(back, `${lat},${lon}`);
       assert.ok(Math.abs(back.lat - lat) < 1e-4);
       assert.ok(Math.abs(back.lon - lon) < 1e-4);
@@ -31,7 +32,7 @@ describe('compact pack round-trip', () => {
   });
   it('round-trips the 0001-01-01 epoch boundary', () => {
     const ms = -62167219200000;
-    const back = parse(shareState(51.5, -0.12, ms));
+    const back = parse1(shareState(51.5, -0.12, ms));
     assert.ok(back);
     assert.equal(back.utcMs, ms);
   });
@@ -45,7 +46,7 @@ describe('compact pack round-trip', () => {
 
 describe('legacy readable form', () => {
   it('parses old links', () => {
-    const back = parse('#40.7128,-74.0060,1787616000');
+    const back = parse1('#40.7128,-74.0060,1787616000');
     assert.ok(back);
     assert.equal(back.lat, 40.7128);
     assert.equal(back.lon, -74.006);
@@ -58,7 +59,7 @@ describe('legacy readable form', () => {
   });
   it('accepts the BCE floor exactly', () => {
     const sec = Math.round(BCE_MIN_MS / 1000);
-    const back = parse(`#40,-74,${sec}`);
+    const back = parse1(`#40,-74,${sec}`);
     assert.ok(back);
     assert.equal(back.utcMs, sec * 1000);
     assert.equal(parse(`#40,-74,${sec - 1}`), null);
@@ -73,7 +74,7 @@ describe('shareLink', () => {
     const ms = (jdFromCal(-43, 3, 15, 19.4716) - JD_UNIX_EPOCH) * 86400000;
     const link = shareLink(40.7, -112.074, ms);
     assert.match(link, /^#-?\d+\.\d+,-?\d+\.\d+,-?\d+$/);
-    const back = parse(link);
+    const back = parse1(link);
     assert.ok(back);
     assert.ok(Math.abs(back.utcMs - ms) < 1000);
     assert.ok(Math.abs(back.lat - 40.7) < 1e-4);
@@ -81,5 +82,48 @@ describe('shareLink', () => {
   it('CE/BCE boundary: 0001-01-01T00:00:00Z packs, one second before does not', () => {
     assert.match(shareLink(0, 0, -62167219200000), /^#[A-Za-z0-9\-_]{14}$/);
     assert.match(shareLink(0, 0, -62167219200001), /^#-?\d/);
+  });
+});
+
+describe('multi-triplet hashes', () => {
+  it('round-trips two triplets', () => {
+    const states = [
+      { lat: 40.7128, lon: -74.006, utcMs: 1787616000000 },
+      { lat: 51.5, lon: -0.12, utcMs: 1893456000000 },
+    ];
+    const h = shareStates(states);
+    assert.match(h, /^#[A-Za-z0-9\-_]{28}$/);
+    const back = parse(h);
+    assert.equal(back.length, 2);
+    for (let i = 0; i < 2; i++) {
+      assert.ok(Math.abs(back[i].lat - states[i].lat) < 1e-4);
+      assert.ok(Math.abs(back[i].lon - states[i].lon) < 1e-4);
+      assert.equal(back[i].utcMs, Math.round(states[i].utcMs / 1000) * 1000);
+    }
+  });
+  it('round-trips three triplets', () => {
+    const states = [
+      { lat: 0, lon: 0, utcMs: 0 },
+      { lat: 10, lon: 20, utcMs: 1000000000000 },
+      { lat: -33.8, lon: 151.2, utcMs: 2000000000000 },
+    ];
+    const back = parse(shareStates(states));
+    assert.equal(back.length, 3);
+    assert.ok(Math.abs(back[2].lat - (-33.8)) < 1e-4);
+  });
+  it('single-triplet hash still parses as one element', () => {
+    const back = parse(shareState(40.7, -74, 1787616000000));
+    assert.equal(back.length, 1);
+  });
+  it('rejects non-multiple-of-14 lengths', () => {
+    assert.equal(parse('#' + 'A'.repeat(15)), null);
+    assert.equal(parse('#' + 'A'.repeat(27)), null);
+  });
+  it('shareLinks uses one triplet for a single state', () => {
+    assert.match(shareLinks([{ lat: 0, lon: 0, utcMs: 0 }]), /^#[A-Za-z0-9\-_]{14}$/);
+    assert.match(shareLinks([
+      { lat: 0, lon: 0, utcMs: 0 },
+      { lat: 1, lon: 1, utcMs: 1000 },
+    ]), /^#[A-Za-z0-9\-_]{28}$/);
   });
 });

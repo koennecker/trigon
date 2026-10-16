@@ -6,7 +6,8 @@
 // is no pure logic here worth a node unit test.
 export function createClock(env) {
   const { el, readDateFields, writeDateFields, updateTzForEra, deriveTimezone,
-          run, getDerivedZone, setSkipEnabled } = env;
+          run, getDerivedZone, setSkipEnabled, getAnimTarget,
+          setOuterWheelToMs } = env;
 
   let clockTimer = null;
 
@@ -52,6 +53,13 @@ export function createClock(env) {
     const nowMs = Date.now();
     // The picker shows the wall time (minute precision); the computation uses
     // the exact instant, so the wheel genuinely moves every second.
+    const target = getAnimTarget ? getAnimTarget() : 0;
+    if (target !== 0 && setOuterWheelToMs) {
+      // Outer wheel in clock mode: root stays static, the wheel tracks now.
+      setOuterWheelToMs(target - 1, nowMs);
+      run(true, { quiet: true, live: true });
+      return;
+    }
     const zone = getDerivedZone();
     if (zone) setDateTimeToZoneNow(zone); else setDateTimeToNow();
     deriveTimezone();

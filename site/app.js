@@ -17,7 +17,7 @@ import { openDatePicker } from './datepicker.js';
 import { attachDateTime, clampDT, cmpDT, dtFloor, dtCeil } from './datetime.js';
 import { fmtLon, fmtCoord, fmtSignPos, readAngleFmt, writeAngleFmt, rowsToCSV, gotoButtonHTML,
   readGlyphsPref, writeGlyphsPref, readAngleMode, writeAngleMode } from './format.js';
-import { parseShareHashString, shareLink } from './share.js';
+import { parseShareHashString, shareLink, shareLinks } from './share.js';
 import { tableRows, buildTableHTML, speedIndicatorHTML, angleRows } from './table.js';
 import { computeLots, buildLotsHTML, readLotOptions, writeLotOptions, sunAltitudeDeg,
   computeCatalogLots, buildCatalogHTML, buildCatalogSelectedHTML, readCatalogSelection, writeCatalogSelection } from './lots.js';
@@ -337,6 +337,106 @@ function openGroupPicker(p) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Outer wheels (biwheel, triwheel, ...).
+// The root chart uses the main inputs above. Each outer wheel is a UTC
+// datetime (+ label) shown as a ring outside the root wheel. Positions are
+// geocentric ecliptic longitudes, so no location is needed.
+let outerWheels = []; // [{utcMs, label}]
+let animTarget = 0; // 0 = root chart, 1..N = outer wheel index+1. Only the
+                    // target panel moves during animation/clock; others stay static.
+const getAnimTarget = () => animTarget;
+
+function renderAnimTargetRadios() {
+  const box = $('anim-target-wheels');
+  if (!box) return;
+  box.innerHTML = '';
+  outerWheels.forEach((w, i) => {
+    const lbl = document.createElement('label');
+    const radio = document.createElement('input');
+    radio.type = 'radio'; radio.name = 'anim-target'; radio.value = String(i + 1);
+    if (animTarget === i + 1) radio.checked = true;
+    lbl.appendChild(radio);
+    lbl.appendChild(document.createTextNode(` Wheel ${i + 1}`));
+    box.appendChild(lbl);
+  });
+  // If the target wheel was removed, fall back to root.
+  if (animTarget > outerWheels.length) {
+    animTarget = 0;
+    const root = document.querySelector('input[name="anim-target"][value="0"]');
+    if (root) root.checked = true;
+  }
+}
+
+function renderOuterPanels() {
+  const box = $('outer-panels');
+  if (!box) return;
+  box.innerHTML = '';
+  renderAnimTargetRadios();
+  outerWheels.forEach((w, i) => {
+    const div = document.createElement('div');
+    div.className = 'outer-panel';
+    div.dataset.idx = i;
+    // datetime-local value from UTC ms
+    const d = new Date(w.utcMs);
+    const pad = n => String(n).padStart(2, '0');
+    const val = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+    div.innerHTML =
+      `<div class="outer-panel-head"><span>Outer wheel ${i + 1}</span>` +
+      `<button type="button" class="ghost outer-remove" data-idx="${i}" aria-label="Remove outer wheel ${i + 1}">&times;</button></div>` +
+      `<input type="datetime-local" class="outer-dt" data-idx="${i}" value="${val}" aria-label="Outer wheel ${i + 1} date and time (UTC)">` +
+      `<input type="text" class="outer-label" data-idx="${i}" value="${(w.label || '').replace(/"/g, '&quot;')}" placeholder="Label (e.g. Transits)" aria-label="Outer wheel ${i + 1} label">`;
+    box.appendChild(div);
+  });
+}
+
+function readOuterWheels() {
+  const out = [];
+  document.querySelectorAll('#outer-panels .outer-panel').forEach(div => {
+    const i = parseInt(div.dataset.idx, 10);
+    const dtEl = div.querySelector('.outer-dt');
+    const lbEl = div.querySelector('.outer-label');
+    const ms = dtEl && dtEl.value ? Date.parse(dtEl.value + ':00Z') : NaN;
+    if (!Number.isFinite(ms)) throw new Error(`outer wheel ${i + 1}: invalid date/time`);
+    out.push({ utcMs: ms, label: (lbEl && lbEl.value.trim()) || `Wheel ${i + 1}` });
+  });
+  return out;
+}
+
+// Update an outer wheel's datetime (array + DOM input).
+function setOuterWheelToMs(i, ms) {
+  if (!outerWheels[i]) return;
+  outerWheels[i].utcMs = ms;
+  const input = document.querySelector(`#outer-panels .outer-dt[data-idx="${i}"]`);
+  if (input) {
+    const d = new Date(ms);
+    const pad = n => String(n).padStart(2, '0');
+    input.value = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+  }
+}
+
+function initOuterWheels() {
+  const targetRow = $('anim-target-row');
+  if (targetRow) targetRow.addEventListener('change', e => {
+    const r = e.target.closest('input[name="anim-target"]');
+    if (r) animTarget = parseInt(r.value, 10);
+  });
+  const add = $('add-wheel');
+  if (add) add.addEventListener('click', () => {
+    // default to the root chart's instant so the new ring is visible immediately
+    const ms = lastInstantMs != null ? lastInstantMs : Date.now();
+    outerWheels.push({ utcMs: ms, label: '' });
+    renderOuterPanels();
+  });
+  const box = $('outer-panels');
+  if (box) box.addEventListener('click', e => {
+    const btn = e.target.closest('.outer-remove');
+    if (!btn) return;
+    outerWheels.splice(parseInt(btn.dataset.idx, 10), 1);
+    renderOuterPanels();
+  });
+}
+
 function initDateTimeInputs() {
   for (const p of ['dt', 'asp-start', 'asp-end', 'stn-start', 'stn-end', 'ing-start', 'ing-end']) {
     const input = $(`${p}-in`);
@@ -430,7 +530,7 @@ function readInputs(utcMs = null) {
 }
 
 // Last rendered results, so the angle-format toggle can re-render in place.
-let lastOut = null, lastMeta = '', lastInstantMs = null;
+let lastOut = null, lastMeta = '', lastInstantMs = null, lastOuterOuts = [];
 let lastInp = null;                 // last chart input {jd, lat, lon, ...}
 let skyUI = null;
 // Shared Sky init promise: concurrent callers (tab switch, retrograde
@@ -562,6 +662,8 @@ async function ensureSky() {
       try {
         const mod = await import('./sky.js');
         skyUI = mod.createSkyUI({
+          // Sky uses the root chart only; outer wheels are a chart-tab
+          // concept and never reach the sky.
           getEphemeris: () => (lastOut && lastInp && lastInstantMs != null)
             ? { out: lastOut, inp: lastInp, utcMs: lastInstantMs } : null,
           store: { get: epheGet, put: ephePut },
@@ -734,9 +836,9 @@ function wireChartStyle(root) {
   });
 }
 
-function renderResults(out, meta) {
-  lastOut = out; lastMeta = meta;
-  lastChartSVG = renderChart(out, chartOpts());
+function renderResults(out, meta, outerOuts = []) {
+  lastOut = out; lastMeta = meta; lastOuterOuts = outerOuts;
+  lastChartSVG = renderChart(out, { ...chartOpts(), outerWheels: outerOuts });
   $('views-head').innerHTML =
       `<div class="res-brand"><img class="logo" src="logo.svg" alt="">Trigon</div>`
     + `<div class="meta" style="margin-bottom:4px">${meta}</div>`;
@@ -877,7 +979,10 @@ async function shareChart() {
   if (lastInstantMs == null) return;
   const lat = parseFloat($('lat').value), lon = parseFloat($('lon').value);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
-  const url = location.origin + location.pathname + shareLink(lat, lon, lastInstantMs);
+  // Share all wheels: root triplet plus one per outer wheel.
+  const states = [{ lat, lon, utcMs: lastInstantMs }];
+  for (const w of readOuterWheels()) states.push({ lat, lon, utcMs: w.utcMs });
+  const url = location.origin + location.pathname + shareLinks(states);
   const ok = await copyText(url);
   if (btn) {
     const prev = btn.textContent;
@@ -913,7 +1018,10 @@ async function copyDebug() {
 
 // Opening a shared link: set the coordinates, name the nearest gazetteer
 // city, align picker and timezone with the shared instant, then compute it.
-async function initShare(share) {
+async function initShare(shares) {
+  // shares: array of {lat, lon, utcMs}; [0] is the root chart, the rest
+  // become outer wheels.
+  const share = shares[0];
   let cityName = null, country = null;
   try {
     await locUI.ensureCities();
@@ -924,6 +1032,9 @@ async function initShare(share) {
     ? `Nearest city: ${cityName}, ${country} \u2014 ${fmtCoord(share.lat, share.lon)}`
     : `Shared coordinates \u2014 ${fmtCoord(share.lat, share.lon)}`;
   locUI.setLocation(share.lat, share.lon, label, cityName);
+  // Outer wheels from the remaining triplets.
+  outerWheels = shares.slice(1).map((s, i) => ({ utcMs: s.utcMs, label: `Wheel ${i + 1}` }));
+  renderOuterPanels();
   if (share.utcMs < -62167219200000) {
     // BCE share: Intl has no BCE zones, so restore the wall fields directly
     // as local mean time at the shared longitude.
@@ -1143,6 +1254,17 @@ async function run(useSwiss, opts = {}) {  const token = ++runToken; // overlapp
     const out = computeChart(mod, inp.y, inp.mo, inp.d, inp.hourUT, inp.lat, inp.lon, useSwiss);
     const ephBad = validateEphOut(out);
     if (ephBad.length) throw new Error('Ephemeris output failed validation: ' + ephBad.join('; '));
+    // Outer wheels: one ephemeris per wheel, same location as root
+    // (geocentric longitudes don't depend on it).
+    const wheels = readOuterWheels();
+    const outerOuts = [];
+    for (const w of wheels) {
+      const c = calFromJd(JD_UNIX_EPOCH + w.utcMs / 86400000);
+      const o = computeChart(mod, c.y, c.mo, c.d, c.hourUT, inp.lat, inp.lon, useSwiss);
+      const bad = validateEphOut(o);
+      if (bad.length) throw new Error('Outer wheel ephemeris failed validation: ' + bad.join('; '));
+      outerOuts.push({ out: o, label: w.label, utcMs: w.utcMs });
+    }
     if (token !== runToken) return; // superseded by a newer run
     hideLoader(); // downloads done (or were cached and never shown)
     lastInstantMs = inp.utcMs;
@@ -1160,7 +1282,7 @@ async function run(useSwiss, opts = {}) {  const token = ++runToken; // overlapp
       updateLiveResults(out, stamp);
       if ($('panel-table').style.display !== 'none') maybeRefreshExtras(false);
     } else {
-      renderResults(out, meta);
+      renderResults(out, meta, outerOuts);
     }
     // Sky tab: push the fresh ephemeris through (no-op while hidden).
     if (skyUI) skyUI.onEphemeris();
@@ -1247,6 +1369,7 @@ const clockApi = createClock({
   updateTzForEra: (...a) => locUI.updateTzForEra(...a),
   deriveTimezone: (...a) => locUI.deriveTimezone(...a),
   run, getDerivedZone: (...a) => locUI.getDerivedZone(...a), setSkipEnabled,
+  getAnimTarget, setOuterWheelToMs,
 });
 
 // Time-lapse animation over an absolute or relative date range. Drives the
@@ -1254,8 +1377,16 @@ const clockApi = createClock({
 // sky all track the advancing instant.
 const animApi = createAnimation({
   el: $,
-  readInstantMs: () => readInputs().utcMs,
+  readInstantMs: () => {
+    const t = getAnimTarget();
+    if (t === 0) return readInputs().utcMs;
+    const w = readOuterWheels()[t - 1];
+    if (!w) throw new Error('animation target wheel not found');
+    return w.utcMs;
+  },
   setPickerToInstantMs: ms => {
+    const t = getAnimTarget();
+    if (t !== 0) { setOuterWheelToMs(t - 1, ms); return; }
     const zone = locUI.getDerivedZone();
     if (zone) {
       clockApi.setDateTimeToInstantInZone(ms, zone);
@@ -1359,6 +1490,8 @@ function init() {
   document.querySelectorAll('#views .tabs button').forEach(b =>
     b.addEventListener('click', () => setTab(b.dataset.tab)));
   initDateTimeInputs();
+  initOuterWheels();
+  renderOuterPanels();
   animApi.init();
   $('calc').addEventListener('click', () => { animApi.stop(); run(true); });
   $('moshier').addEventListener('click', () => run(false));
