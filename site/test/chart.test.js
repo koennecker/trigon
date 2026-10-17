@@ -210,7 +210,11 @@ describe('chart style', () => {
     const d = defaultChartStyle();
     assert.deepEqual(d.desktop,
       { rOut: 294, rSign: 278, rDiv: 262, rHug: 248, rIn: 120, rAsp: 100,
-        signSize: 19, lblGlyphSize: 12, lblTextSize: 9.5, aspGlyphSize: 12 });
+        signSize: 19, signWeight: 400,
+        lblGlyphSize: 12, lblGlyphWeight: 400,
+        lblTextSize: 9.5, lblTextWeight: 400,
+        lblSignSize: 12, lblSignWeight: 400,
+        aspGlyphSize: 12 });
     assert.deepEqual(d.mobile,
       { rOut: 165, rSign: 150, rAsp: 85, rGlyph: 218, glyphSize: 32, signSize: 16 });
     assert.deepEqual(d.shared, { aspWidth: 1, sepScale: 1 });
@@ -255,10 +259,10 @@ describe('chart style', () => {
   });
   it('labelAngularHW / labelTokenPitch reproduce the legacy tuning at defaults', () => {
     // Guard is evaluated at the innermost token radius (248 - 3*15 = 203).
-    const hw = labelAngularHW(12, 9.5, 203);
+    const hw = labelAngularHW(12, 9.5, 12, 203);
     assert.ok(Math.abs(hw * 1.305 - 3.5) < 0.02, hw);
     assert.ok(Math.abs(hw * 0.932 - 2.5) < 0.02, hw);
-    assert.equal(labelTokenPitch(12, 9.5), 15);
+    assert.equal(labelTokenPitch(12, 9.5, 12), 15);
   });
   it('huge label sizes widen the declutter guard and token pitch', () => {
     const svg = renderChartSVG(makeOut([10, 100, 190, 280]),

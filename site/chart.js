@@ -56,8 +56,15 @@ export const CHART_STYLE_SECTIONS = [
     { key: 'rIn',   label: 'Inner circle radius',  min: 80,  max: 170, step: 1,   def: 120 },
     { key: 'rAsp',  label: 'Aspect circle radius', min: 50,  max: 150, step: 1,   def: 100 },
     { key: 'signSize',     label: 'Sign glyph size',   min: 12, max: 28, step: 0.5, def: 19 },
-    { key: 'lblGlyphSize', label: 'Label glyph size',  min: 8,  max: 18, step: 0.5, def: 12 },
+    { key: 'signWeight',   label: 'Sign glyph weight', min: 400, max: 900, step: 100, def: 400,
+      hint: 'font-weight for the zodiac band glyphs; 400 normal, 700 bold.' },
+    { key: 'lblGlyphSize', label: 'Label point-glyph size',  min: 8, max: 18, step: 0.5, def: 12 },
+    { key: 'lblGlyphWeight', label: 'Label point-glyph weight', min: 400, max: 900, step: 100, def: 400 },
     { key: 'lblTextSize',  label: 'Label degree size', min: 7,  max: 14, step: 0.5, def: 9.5 },
+    { key: 'lblTextWeight', label: 'Label degree weight', min: 400, max: 900, step: 100, def: 400 },
+    { key: 'lblSignSize', label: 'Label sign-glyph size', min: 8, max: 18, step: 0.5, def: 12,
+      hint: 'Zodiac glyph inside the label (separate from the wheel band).' },
+    { key: 'lblSignWeight', label: 'Label sign-glyph weight', min: 400, max: 900, step: 100, def: 400 },
     { key: 'aspGlyphSize', label: 'Aspect glyph size', min: 8,  max: 18, step: 0.5, def: 12 },
   ] },
   { id: 'mobile', title: 'Mobile wheel', params: [
@@ -119,16 +126,16 @@ export function resolveChartStyle(overrides) {
 // Angular half-width (degrees) of one radial spoke label at the given
 // radius, from the actual token sizes: the widest token is the glyph
 // (~lblGlyphSize) or the degree/minutes token (~2x lblTextSize).
-export function labelAngularHW(lblGlyphSize, lblTextSize, radius) {
-  const tokW = Math.max(lblGlyphSize, 2 * lblTextSize);
+export function labelAngularHW(lblGlyphSize, lblTextSize, lblSignSize, radius) {
+  const tokW = Math.max(lblGlyphSize, lblSignSize, 2 * lblTextSize);
   return (tokW / 2) / radius * 180 / Math.PI;
 }
 
 // Radial spacing between spoke tokens: tokens are ~font-size tall with
 // dominant-baseline central, so the pitch must clear the largest token.
 // 1.25x reproduces the legacy 15px pitch at the defaults (12/9.5).
-export function labelTokenPitch(lblGlyphSize, lblTextSize) {
-  return 1.25 * Math.max(lblGlyphSize, lblTextSize);
+export function labelTokenPitch(lblGlyphSize, lblTextSize, lblSignSize) {
+  return 1.25 * Math.max(lblGlyphSize, lblTextSize, lblSignSize);
 }
 
 
@@ -254,9 +261,10 @@ function degLabel(lon, angleFmt) {
   return `${dd}\u00B0${String(mm).padStart(2, '0')}\u2032`;
 }
 
-function text(x, y, s, size, fill, extra = '') {
+function text(x, y, s, size, fill, extra = '', weight = 0) {
+  const w = weight > 400 ? ` font-weight="${weight}"` : '';
   return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" `
-       + `dominant-baseline="central" font-size="${size}" fill="${fill}"${extra}>${s}</text>`;
+       + `dominant-baseline="central" font-size="${size}" fill="${fill}"${w}${extra}>${s}</text>`;
 }
 
 export function renderChartSVG(out, opts = {}) {
@@ -297,7 +305,7 @@ export function renderChartSVG(out, opts = {}) {
   for (let k = 0; k < 12; k++) {
     const sIdx = (Math.floor(ref / 30) + k) % 12;
     const [x, y] = P(st.rSign, ref + k * 30 + 15);
-    s += text(x, y, SIGN_GLYPHS[sIdx] + TVS, st.signSize, ELEMENT_COLORS[sIdx % 4]);
+    s += text(x, y, SIGN_GLYPHS[sIdx] + TVS, st.signSize, ELEMENT_COLORS[sIdx % 4], '', st.signWeight);
   }
 
   // --- house cusps: Asc–Dsc axis through the center, the rest inner→outer ---
@@ -362,7 +370,7 @@ export function renderChartSVG(out, opts = {}) {
   // 3.5°/2.5° split at the defaults.
   // Radial token spacing: tokens are ~font-size tall, so the pitch must
   // clear the largest token (see labelTokenPitch).
-  const TOKEN_PITCH = labelTokenPitch(st.lblGlyphSize, st.lblTextSize);
+  const TOKEN_PITCH = labelTokenPitch(st.lblGlyphSize, st.lblTextSize, st.lblSignSize);
   // Innermost token radius: the token stack runs inward from rHug, and
   // spokes converge toward the center, so the no-overlap angular guard
   // must be evaluated where labels are closest together — not at the
@@ -370,7 +378,7 @@ export function renderChartSVG(out, opts = {}) {
   // pitch 15) the inner radius is 203, angHW is 2.68°, and the factors
   // below reproduce the legacy 3.5°/2.5° split exactly.
   const R_INNER = Math.max(24, st.rHug - 3 * TOKEN_PITCH);
-  const angHW = labelAngularHW(st.lblGlyphSize, st.lblTextSize, R_INNER);
+  const angHW = labelAngularHW(st.lblGlyphSize, st.lblTextSize, st.lblSignSize, R_INNER);
   // User-settable separation multiplier: scales the
   // geometric guard; 1 = no-overlap size, lower packs tighter, 0 disables.
   const SEP = sh.sepScale;
@@ -429,7 +437,7 @@ export function renderChartSVG(out, opts = {}) {
       toks.push({ text: `${dd}\u00B0` });
       minTok = { text: `${String(mm).padStart(2, '0')}\u2032` };
     }
-    toks.push({ text: SIGN_GLYPHS[sIdx] + TVS, glyph: true, color: ELEMENT_COLORS[sIdx % 4] });
+    toks.push({ text: SIGN_GLYPHS[sIdx] + TVS, glyph: true, sign: true, color: ELEMENT_COLORS[sIdx % 4] });
     if (minTok) toks.push(minTok);
     return toks;
   };
@@ -469,10 +477,19 @@ export function renderChartSVG(out, opts = {}) {
     const tspans = toks.map((t, i) => {
       const r = st.rHug - i * TOKEN_PITCH;
       const tx = CX + ux * r, ty = CY + uy * r;
-      const attrs = t.glyph ? ` font-size="${st.lblGlyphSize}" fill="${t.color}"` : '';
+      // Label parts get their own size + weight: point glyph, degree text,
+      // and the sign glyph inside the label.
+      let size = st.lblTextSize, weight = st.lblTextWeight, fill = '#8b949e';
+      if (t.glyph) {
+        if (t.sign) { size = st.lblSignSize; weight = st.lblSignWeight; }
+        else { size = st.lblGlyphSize; weight = st.lblGlyphWeight; }
+        fill = t.color;
+      }
+      const w = weight > 400 ? ` font-weight="${weight}"` : '';
+      const attrs = ` font-size="${size}" fill="${fill}"${w}`;
       return `<tspan x="${tx.toFixed(1)}" y="${ty.toFixed(1)}"${attrs}>${t.text}</tspan>`;
     }).join('');
-    s += `<text text-anchor="middle" dominant-baseline="central" font-size="${st.lblTextSize}" fill="#8b949e">${tspans}</text>`;
+    s += `<text text-anchor="middle" dominant-baseline="central" font-size="${st.lblTextSize}">${tspans}</text>`;
   });
 
   // --- Ptolemaic aspects between the 10 planets, 3° orb ---
