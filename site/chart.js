@@ -68,6 +68,16 @@ export const CHART_STYLE_SECTIONS = [
     { key: 'glyphSize', label: 'Glyph size',       min: 20,  max: 48,  step: 1, def: 32 },
     { key: 'signSize',  label: 'Sign glyph size',  min: 10,  max: 24,  step: 0.5, def: 16 },
   ] },
+  { id: 'outer', title: 'Outer wheels (desktop)', params: [
+    { key: 'ringGap',     label: 'Gap from root wheel', min: 10, max: 100, step: 1,   def: 35,
+      hint: 'Radial gap between the root outer circle and the first outer ring.' },
+    { key: 'ringStep',    label: 'Ring spacing',        min: 20, max: 100, step: 1,   def: 50,
+      hint: 'Radial distance between successive outer rings.' },
+    { key: 'glyphOffset', label: 'Glyph ring offset',   min: 5,  max: 40,  step: 1,   def: 18,
+      hint: 'How far outside its ring an outer wheel\u2019s planet glyphs sit.' },
+    { key: 'glyphSize',   label: 'Planet glyph size',   min: 8,  max: 24,  step: 0.5, def: 13 },
+    { key: 'labelSize',   label: 'Wheel label size',    min: 8,  max: 18,  step: 0.5, def: 11 },
+  ] },
   { id: 'shared', title: 'Shared', params: [
     { key: 'aspWidth', label: 'Aspect line thickness', min: 0.3, max: 2.5, step: 0.05, def: 1 },
     { key: 'sepScale', label: 'Label separation \u00d7', min: 0, max: 3, step: 0.05, def: 1,
@@ -522,40 +532,47 @@ export function renderChartSVG(out, opts = {}) {
   s += aspectSVG;
 
   // --- outer wheels (biwheel, triwheel, ...): rings in the expanded margin ---
+  // Radii, glyph and label sizes come from the 'outer' style section, so the
+  // Customize panel controls them like every other wheel geometry.
   const outerWheels = opts.outerWheels || [];
+  const ost = _sty.outer;
   let vbX = 0, vbY = 0, vbS = VB;
   if (outerWheels.length > 0) {
-    const margin = 50 * outerWheels.length;
+    const rRing = wi => st.rOut + ost.ringGap + wi * ost.ringStep;
+    const rGlyph = wi => rRing(wi) + ost.glyphOffset;
+    // viewBox margin fits the outermost glyph ring, derived from the style
+    const maxR = rGlyph(outerWheels.length - 1) + ost.glyphSize;
+    const margin = Math.max(0, Math.ceil(maxR - VB / 2) + 5);
     vbX = -margin; vbY = -margin; vbS = VB + 2 * margin;
+    // declutter separation scales with the glyph size
+    const minSep = 2 + ost.glyphSize * 0.12;
     outerWheels.forEach((w, wi) => {
-      const rRing = st.rOut + 35 + wi * 50;   // the wheel's circle
-      const rGlyph = rRing + 18;               // planet glyph ring
-      s += `<circle cx="${CX}" cy="${CY}" r="${rRing}" fill="none" stroke="#8b949e" stroke-width="1.5"/>`;
+      s += `<circle cx="${CX}" cy="${CY}" r="${rRing(wi)}" fill="none" stroke="#8b949e" stroke-width="1.5"/>`;
       // 10 planet glyphs at their longitudes, same Ascendant reference as root
       const pts = [];
       for (let i = 0; i < 10; i++) {
         pts.push({ lon: norm360(w.out[i * 6]), glyph: PLANET_GLYPHS[i],
                    color: PLANET_COLORS[i], retro: w.out[i * 6 + 3] < 0 });
       }
-      // minimal declutter: sort by longitude, enforce 3.5° separation
+      // minimal declutter: sort by longitude, enforce minSep separation
       pts.sort((a, b) => a.lon - b.lon);
       for (let k = 1; k < pts.length; k++) {
         let d = pts[k].lon - pts[k - 1].lon;
         if (d < 0) d += 360;
-        if (d < 3.5 && d > 0) pts[k].lon = pts[k - 1].lon + 3.5;
+        if (d < minSep && d > 0) pts[k].lon = pts[k - 1].lon + minSep;
       }
       for (const p of pts) {
-        const [x, y] = P(rGlyph, p.lon);
-        s += text(x, y, p.glyph + TVS, 13, p.color);
+        const [x, y] = P(rGlyph(wi), p.lon);
+        s += text(x, y, p.glyph + TVS, ost.glyphSize, p.color);
         if (p.retro) {
-          const [rx, ry] = P(rGlyph - 12, p.lon);
-          s += text(rx, ry, 'R', 8, '#8b949e');
+          const [rx, ry] = P(rGlyph(wi) - ost.glyphSize * 0.9, p.lon);
+          s += text(rx, ry, 'R', ost.glyphSize * 0.6, '#8b949e');
         }
       }
       // wheel label at the top of its ring
       if (w.label) {
-        const [lx, ly] = P(rRing, ref + 90);
-        s += text(lx, ly, w.label, 11, '#8b949e');
+        const [lx, ly] = P(rRing(wi), ref + 90);
+        s += text(lx, ly, w.label, ost.labelSize, '#8b949e');
       }
     });
   }

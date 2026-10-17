@@ -214,6 +214,8 @@ describe('chart style', () => {
     assert.deepEqual(d.mobile,
       { rOut: 165, rSign: 150, rAsp: 85, rGlyph: 218, glyphSize: 32, signSize: 16 });
     assert.deepEqual(d.shared, { aspWidth: 1, sepScale: 1 });
+    assert.deepEqual(d.outer,
+      { ringGap: 35, ringStep: 50, glyphOffset: 18, glyphSize: 13, labelSize: 11 });
   });
   it('every section param has a matching default key', () => {
     const d = defaultChartStyle();

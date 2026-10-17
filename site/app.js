@@ -807,7 +807,7 @@ function setChartStyleOverride(sec, key, v) {
 }
 function rerenderChartSVG() {
   if (!lastOut) return;
-  const svg = renderChart(lastOut, chartOpts());
+  const svg = renderChart(lastOut, { ...chartOpts(), outerWheels: lastOuterOuts });
   lastChartSVG = svg;
   const wrap = document.querySelector('#panel-chart .chart-wrap');
   if (wrap) wrap.innerHTML = svg;
@@ -1159,7 +1159,7 @@ function updateLiveResults(out, stamp) {
   // the markup changed, so identical seconds cost a string compare, not a
   // re-parse.
   if (chartVisible) {
-    const svg = renderChart(out, chartOpts());
+    const svg = renderChart(out, { ...chartOpts(), outerWheels: lastOuterOuts });
     if (svg !== lastChartSVG) {
       const wrap = document.querySelector('#panel-chart .chart-wrap');
       if (wrap) wrap.innerHTML = svg;
@@ -1279,6 +1279,7 @@ async function run(useSwiss, opts = {}) {  const token = ++runToken; // overlapp
       + (inp.bce ? 'local mean time \u00B7 ' : '')
       + (useSwiss ? 'Swiss Ephemeris (JPL-based .se1 files)' : 'Moshier analytic ephemeris (approximate)');
     if ((opts.live || patchReuse) && $('views').dataset.ready === '1' && $('meta-stamp') && $('panel-table')) {
+      lastOuterOuts = outerOuts;
       updateLiveResults(out, stamp);
       if ($('panel-table').style.display !== 'none') maybeRefreshExtras(false);
     } else {
