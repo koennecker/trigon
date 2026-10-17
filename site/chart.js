@@ -65,6 +65,8 @@ export const CHART_STYLE_SECTIONS = [
     { key: 'lblSignSize', label: 'Label sign-glyph size', min: 8, max: 18, step: 0.5, def: 12,
       hint: 'Zodiac glyph inside the label (separate from the wheel band).' },
     { key: 'lblSignWeight', label: 'Label sign-glyph weight', min: 400, max: 900, step: 100, def: 400 },
+    { key: 'lblPitch', label: 'Label token spacing', min: 0.5, max: 1.5, step: 0.05, def: 1,
+      hint: 'Multiplier on the radial gap between label parts (glyph, degree, sign, minutes).' },
     { key: 'aspGlyphSize', label: 'Aspect glyph size', min: 8,  max: 18, step: 0.5, def: 12 },
   ] },
   { id: 'mobile', title: 'Mobile wheel', params: [
@@ -134,8 +136,8 @@ export function labelAngularHW(lblGlyphSize, lblTextSize, lblSignSize, radius) {
 // Radial spacing between spoke tokens: tokens are ~font-size tall with
 // dominant-baseline central, so the pitch must clear the largest token.
 // 1.25x reproduces the legacy 15px pitch at the defaults (12/9.5).
-export function labelTokenPitch(lblGlyphSize, lblTextSize, lblSignSize) {
-  return 1.25 * Math.max(lblGlyphSize, lblTextSize, lblSignSize);
+export function labelTokenPitch(lblGlyphSize, lblTextSize, lblSignSize, pitchScale = 1) {
+  return 1.1 * Math.max(lblGlyphSize, lblTextSize, lblSignSize) * pitchScale;
 }
 
 
@@ -370,7 +372,7 @@ export function renderChartSVG(out, opts = {}) {
   // 3.5°/2.5° split at the defaults.
   // Radial token spacing: tokens are ~font-size tall, so the pitch must
   // clear the largest token (see labelTokenPitch).
-  const TOKEN_PITCH = labelTokenPitch(st.lblGlyphSize, st.lblTextSize, st.lblSignSize);
+  const TOKEN_PITCH = labelTokenPitch(st.lblGlyphSize, st.lblTextSize, st.lblSignSize, st.lblPitch);
   // Innermost token radius: the token stack runs inward from rHug, and
   // spokes converge toward the center, so the no-overlap angular guard
   // must be evaluated where labels are closest together — not at the

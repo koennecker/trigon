@@ -213,7 +213,7 @@ describe('chart style', () => {
         signSize: 19, signWeight: 400,
         lblGlyphSize: 12, lblGlyphWeight: 400,
         lblTextSize: 9.5, lblTextWeight: 400,
-        lblSignSize: 12, lblSignWeight: 400,
+        lblSignSize: 12, lblSignWeight: 400, lblPitch: 1,
         aspGlyphSize: 12 });
     assert.deepEqual(d.mobile,
       { rOut: 165, rSign: 150, rAsp: 85, rGlyph: 218, glyphSize: 32, signSize: 16 });
@@ -262,12 +262,12 @@ describe('chart style', () => {
     const hw = labelAngularHW(12, 9.5, 12, 203);
     assert.ok(Math.abs(hw * 1.305 - 3.5) < 0.02, hw);
     assert.ok(Math.abs(hw * 0.932 - 2.5) < 0.02, hw);
-    assert.equal(labelTokenPitch(12, 9.5, 12), 15);
+    assert.ok(Math.abs(labelTokenPitch(12, 9.5, 12) - 13.2) < 1e-9);
   });
   it('huge label sizes widen the declutter guard and token pitch', () => {
     const svg = renderChartSVG(makeOut([10, 100, 190, 280]),
       { style: { desktop: { lblGlyphSize: 48, lblTextSize: 38 } } });
-    // token pitch = 1.25 * max(48, 38) = 60 along each radial spoke:
+    // token pitch = 1.1 * max(48, 38) = 52.8 along each radial spoke:
     // measure Euclidean tspan spacing within each label's <text>.
     const texts = [...svg.matchAll(/<text[^>]*>(.*?)<\/text>/g)].map(m => m[1]);
     let n = 0;
@@ -276,7 +276,7 @@ describe('chart style', () => {
         .map(m => [+m[1], +m[2]]);
       for (let i = 1; i < pts.length; i++) {
         const g = Math.hypot(pts[i][0] - pts[i-1][0], pts[i][1] - pts[i-1][1]);
-        assert.ok(Math.abs(g - 60) < 1, `gap ${g}`);
+        assert.ok(Math.abs(g - 52.8) < 1, `gap ${g}`);
         n++;
       }
     }
