@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { pavaIsotonic, declutterArc, renderChartSVG, renderChartSVGMobile,
          CHART_STYLE_SECTIONS, defaultChartStyle, resolveChartStyle,
-         labelAngularHW, labelTokenPitch } from '../chart.js';
+         labelAngularHW, labelTokenPitch, placeOuterGlyphs } from '../chart.js';
 
 const approx = (a, b, tol = 1e-9) => Math.abs(a - b) <= tol;
 const approxArr = (a, b, tol = 1e-9) => {
@@ -219,7 +219,7 @@ describe('chart style', () => {
       { rOut: 165, rSign: 150, rAsp: 85, rGlyph: 218, glyphSize: 32, signSize: 16 });
     assert.deepEqual(d.shared, { aspWidth: 1, sepScale: 1 });
     assert.deepEqual(d.outer,
-      { ringGap: 35, ringStep: 50, glyphOffset: 18, glyphSize: 13, labelSize: 11 });
+      { ringGap: 35, bandWidth: 30, ringStep: 20, glyphSize: 13, labelSize: 11, tickLen: 8 });
   });
   it('every section param has a matching default key', () => {
     const d = defaultChartStyle();
@@ -358,5 +358,33 @@ describe('chart style', () => {
     assert.ok(mk(undefined).includes('viewBox="110 110 480 480"'));
     const big = mk({ mobile: { rGlyph: 260, glyphSize: 48 } });
     assert.ok(big.includes('font-size="48"'), 'glyph size override renders');
+  });
+});
+
+describe('placeOuterGlyphs', () => {
+  it('separates clustered glyphs', () => {
+    // 3 glyphs within 2 degrees at r=300, size 13: need ~3.5 deg separation
+    const pts = [{ lon: 10 }, { lon: 11 }, { lon: 12 }];
+    const placed = placeOuterGlyphs(pts, 300, 13);
+    assert.equal(placed.length, 3);
+    // check min separation (circular)
+    const s = [...placed].sort((a, b) => a - b);
+    for (let i = 0; i < 3; i++) {
+      let gap = s[(i + 1) % 3] - s[i];
+      if (gap <= 0) gap += 360;
+      assert.ok(gap >= 3, `gap ${gap} too small`);
+    }
+  });
+  it('leaves spread glyphs alone', () => {
+    const pts = [{ lon: 0 }, { lon: 120 }, { lon: 240 }];
+    const placed = placeOuterGlyphs(pts, 300, 13);
+    for (let i = 0; i < 3; i++) {
+      assert.ok(Math.abs(placed[i] - pts[i].lon) < 0.1, `moved ${placed[i]}`);
+    }
+  });
+  it('handles wrap-around', () => {
+    const pts = [{ lon: 359 }, { lon: 0 }, { lon: 1 }];
+    const placed = placeOuterGlyphs(pts, 300, 13);
+    assert.equal(placed.length, 3);
   });
 });

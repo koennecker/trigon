@@ -79,13 +79,15 @@ export const CHART_STYLE_SECTIONS = [
   ] },
   { id: 'outer', title: 'Outer wheels (desktop)', params: [
     { key: 'ringGap',     label: 'Gap from root wheel', min: 10, max: 100, step: 1,   def: 35,
-      hint: 'Radial gap between the root outer circle and the first outer ring.' },
-    { key: 'ringStep',    label: 'Ring spacing',        min: 20, max: 100, step: 1,   def: 50,
-      hint: 'Radial distance between successive outer rings.' },
-    { key: 'glyphOffset', label: 'Glyph ring offset',   min: 5,  max: 40,  step: 1,   def: 18,
-      hint: 'How far outside its ring an outer wheel\u2019s planet glyphs sit.' },
+      hint: 'Radial gap between the root outer circle and the first outer band.' },
+    { key: 'bandWidth',   label: 'Band width',          min: 16, max: 60,  step: 1,   def: 30,
+      hint: 'Radial width of each outer wheel band; glyphs sit centered.' },
+    { key: 'ringStep',    label: 'Band spacing',        min: 10, max: 100, step: 1,   def: 20,
+      hint: 'Radial gap between successive outer bands.' },
     { key: 'glyphSize',   label: 'Planet glyph size',   min: 8,  max: 24,  step: 0.5, def: 13 },
     { key: 'labelSize',   label: 'Wheel label size',    min: 8,  max: 18,  step: 0.5, def: 11 },
+    { key: 'tickLen',     label: 'Tick length',         min: 2,  max: 16,  step: 1,   def: 8,
+      hint: 'Length of the tick marks on the root wheel for outer planets.' },
   ] },
   { id: 'shared', title: 'Shared', params: [
     { key: 'aspWidth', label: 'Aspect line thickness', min: 0.3, max: 2.5, step: 0.05, def: 1 },
@@ -230,6 +232,71 @@ export function declutterArc(thetas, hws, loA, hiA) {
 // U+FE0E requests text (non-emoji) presentation so glyphs render with our
 // fill colors deterministically instead of as platform emoji badges.
 const TVS = '\uFE0E';
+
+// Place outer-wheel glyphs on a full circle with PAVA declutter.
+// pts: [{lon, ...}]. Returns placed longitudes in the original order.
+// Pool Adjacent Violators: cut the circle at the largest gap, linearize,
+// then forward-pool any violators (glyphs closer than minSep). The pooled
+// positions are the isotonic regression solution: minimal displacement
+// subject to the separation constraints. Exported for testing.
+export function placeOuterGlyphs(pts, rGlyph, glyphSize) {
+  const n = pts.length;
+  if (n === 0) return [];
+  if (n === 1) return [norm360(pts[0].lon)];
+  const lons = pts.map(p => norm360(p.lon));
+  const minSep = (glyphSize * 1.4 / rGlyph) * 180 / Math.PI;
+  // sort indices by longitude
+  const order = lons.map((_, i) => i).sort((a, b) => lons[a] - lons[b]);
+  const sorted = order.map(i => lons[i]);
+  // largest gap -> cut point
+  let maxGap = -1, cut = 0;
+  for (let i = 0; i < n; i++) {
+    let gap = sorted[(i + 1) % n] - sorted[i];
+    if (gap <= 0) gap += 360;
+    if (gap > maxGap) { maxGap = gap; cut = (i + 1) % n; }
+  }
+  // linearize starting at cut
+  const thetas = [];
+  for (let i = 0; i < n; i++) {
+    let lon = sorted[(cut + i) % n];
+    while (i > 0 && lon <= thetas[i - 1]) lon += 360;
+    thetas.push(lon);
+  }
+  // PAVA forward pool: ensure thetas[i+1] - thetas[i] >= minSep.
+  // Pool violators by averaging (isotonic regression).
+  const pools = thetas.map((t, i) => ({ vals: [t], idx: [i] }));
+  let i = 0;
+  while (i < pools.length - 1) {
+    const a = pools[i], b = pools[i + 1];
+    const aEnd = a.vals[a.vals.length - 1];
+    const bStart = b.vals[0];
+    if (bStart - aEnd >= minSep) { i++; continue; }
+    // violation: pool a and b, spacing vals by minSep within the pool
+    const merged = { vals: [...a.vals, ...b.vals], idx: [...a.idx, ...b.idx] };
+    // isotonic mean: average, then re-space
+    const mean = merged.vals.reduce((s, v) => s + v, 0) / merged.vals.length;
+    const m = merged.vals.length;
+    const start = mean - (m - 1) * minSep / 2;
+    merged.vals = merged.vals.map((_, k) => start + k * minSep);
+    pools.splice(i, 2, merged);
+    if (i > 0) i--; // recheck against previous pool
+  }
+  // flatten pools back to thetas order
+  const placedLinear = new Array(n);
+  for (const p of pools) {
+    for (let k = 0; k < p.vals.length; k++) {
+      placedLinear[p.idx[k]] = p.vals[k];
+    }
+  }
+  // map back to original order, wrapped to [0, 360)
+  const base = thetas[0];
+  const result = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const origIdx = order[(cut + i) % n];
+    result[origIdx] = norm360(placedLinear[i]);
+  }
+  return result;
+}
 
 // --- effective vs. actual longitude ---
 // A glyph plotted near either end of its sign would sit on the radial
@@ -550,47 +617,52 @@ export function renderChartSVG(out, opts = {}) {
   });
   s += aspectSVG;
 
-  // --- outer wheels (biwheel, triwheel, ...): rings in the expanded margin ---
-  // Radii, glyph and label sizes come from the 'outer' style section, so the
-  // Customize panel controls them like every other wheel geometry.
+  // --- outer wheels (biwheel, triwheel, ...): bands in the expanded margin ---
+  // Each outer wheel is a band (inner + outer circle) with its 10 planet
+  // glyphs centered inside, PAVA-decluttered. A tick mark on the root wheel
+  // rim marks each outer planet's longitude. Geometry comes from the
+  // 'outer' style section.
   const outerWheels = opts.outerWheels || [];
   const ost = _sty.outer;
   let vbX = 0, vbY = 0, vbS = VB;
   if (outerWheels.length > 0) {
-    const rRing = wi => st.rOut + ost.ringGap + wi * ost.ringStep;
-    const rGlyph = wi => rRing(wi) + ost.glyphOffset;
-    // viewBox margin fits the outermost glyph ring, derived from the style
-    const maxR = rGlyph(outerWheels.length - 1) + ost.glyphSize;
-    const margin = Math.max(0, Math.ceil(maxR - VB / 2) + 5);
+    const rInner = wi => st.rOut + ost.ringGap + wi * (ost.bandWidth + ost.ringStep);
+    const rOuter = wi => rInner(wi) + ost.bandWidth;
+    const rGlyph = wi => (rInner(wi) + rOuter(wi)) / 2;
+    // viewBox margin fits the outermost band plus its label
+    const maxR = rOuter(outerWheels.length - 1) + ost.labelSize + 8;
+    const margin = Math.max(0, Math.ceil(maxR - VB / 2));
     vbX = -margin; vbY = -margin; vbS = VB + 2 * margin;
-    // declutter separation scales with the glyph size
-    const minSep = 2 + ost.glyphSize * 0.12;
     outerWheels.forEach((w, wi) => {
-      s += `<circle cx="${CX}" cy="${CY}" r="${rRing(wi)}" fill="none" stroke="#8b949e" stroke-width="1.5"/>`;
+      const ri = rInner(wi), ro = rOuter(wi), rg = rGlyph(wi);
+      s += `<circle cx="${CX}" cy="${CY}" r="${ri}" fill="none" stroke="#8b949e" stroke-width="1"/>`;
+      s += `<circle cx="${CX}" cy="${CY}" r="${ro}" fill="none" stroke="#8b949e" stroke-width="1.5"/>`;
       // 10 planet glyphs at their longitudes, same Ascendant reference as root
       const pts = [];
       for (let i = 0; i < 10; i++) {
         pts.push({ lon: norm360(w.out[i * 6]), glyph: PLANET_GLYPHS[i],
                    color: PLANET_COLORS[i], retro: w.out[i * 6 + 3] < 0 });
       }
-      // minimal declutter: sort by longitude, enforce minSep separation
-      pts.sort((a, b) => a.lon - b.lon);
-      for (let k = 1; k < pts.length; k++) {
-        let d = pts[k].lon - pts[k - 1].lon;
-        if (d < 0) d += 360;
-        if (d < minSep && d > 0) pts[k].lon = pts[k - 1].lon + minSep;
-      }
+      // PAVA declutter on the circle: cut at the largest gap, linearize,
+      // run declutterArc over the full 360, map back.
+      const placed = placeOuterGlyphs(pts, rg, ost.glyphSize);
+      pts.forEach((p, i) => { p.plon = placed[i]; });
       for (const p of pts) {
-        const [x, y] = P(rGlyph(wi), p.lon);
+        const [x, y] = P(rg, p.plon);
         s += text(x, y, p.glyph + TVS, ost.glyphSize, p.color);
         if (p.retro) {
-          const [rx, ry] = P(rGlyph(wi) - ost.glyphSize * 0.9, p.lon);
-          s += text(rx, ry, 'R', ost.glyphSize * 0.6, '#8b949e');
+          const [rx, ry] = P(rg - ost.glyphSize * 0.75, p.plon);
+          s += text(rx, ry, 'R', ost.glyphSize * 0.55, '#8b949e');
         }
+        // tick mark on the root wheel rim at the planet's true longitude
+        const [tx1, ty1] = P(st.rOut - ost.tickLen, p.lon);
+        const [tx2, ty2] = P(st.rOut, p.lon);
+        s += `<line x1="${tx1.toFixed(1)}" y1="${ty1.toFixed(1)}" x2="${tx2.toFixed(1)}" y2="${ty2.toFixed(1)}" `
+           + `stroke="${p.color}" stroke-width="2" opacity="0.85"/>`;
       }
-      // wheel label at the top of its ring
+      // wheel label outside the band at the top, clear of the glyphs
       if (w.label) {
-        const [lx, ly] = P(rRing(wi), ref + 90);
+        const [lx, ly] = P(ro + ost.labelSize, ref - 90);
         s += text(lx, ly, w.label, ost.labelSize, '#8b949e');
       }
     });
