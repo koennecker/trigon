@@ -5,8 +5,7 @@
 // IndexedDB, mirroring the file-naming logic of swi_gen_filename() in swephlib.c.
 
 import { migrateEpheCache, epheGet, ephePut } from './ephe-store.js';
-import { renderChartSVG, renderChartSVGMobile, getLastChartDebug,
-         CHART_STYLE_SECTIONS, defaultChartStyle, resolveChartStyle } from './chart.js';
+import { renderChartSVG, renderChartSVGMobile, getLastChartDebug } from './chart.js';
 import { jdFromCal, calFromJd, JD_UNIX_EPOCH, stationsAround, syzygiesAround } from './search.js';
 import {
   BCE_MIN_ASTRO, CE_MAX_YEAR, eraToAstro, astroToEra, checkYearRange,
@@ -30,6 +29,7 @@ import { loadSavedLocation, createLocationUI } from './location.js';
 import { skipFields } from './skip.js';
 import { createClock } from './clock.js';
 import { createLoader } from './loader.js';
+import { createChartStyle } from './chart-style.js';
 import { createAnimation } from './animation.js';
 import { nearestCity } from './cities.js';
 
@@ -39,6 +39,7 @@ import { nearestCity } from './cities.js';
 const safeStorage = {
   getItem: (...a) => localStorage.getItem(...a),
   setItem: (...a) => localStorage.setItem(...a),
+  removeItem: (...a) => localStorage.removeItem(...a),
 };
 
 // JD of 0001-01-01 00:00 UTC: BCE/CE boundary for Moshier gating.
@@ -93,16 +94,9 @@ function digFull(out) {
   return { decan: digOpts.decan, isDay };
 }
 
-// Chart style customization (radii, glyph sizes, aspect line width).
-// Overrides only; merged over chart.js defaults on every render.
-const CSTYLE_KEY = 'astroweb-chart-style';
-let chartStyleOverrides = {};
-try {
-  const raw = localStorage.getItem(CSTYLE_KEY);
-  if (raw) chartStyleOverrides = JSON.parse(raw) || {};
-} catch (e) {}
-const chartStyle = () => resolveChartStyle(chartStyleOverrides);
-const chartOpts = () => ({ angleFmt, style: chartStyle() });
+// Chart style customization (radii, glyph sizes, aspect line width) is
+// owned by chart-style.js; chartStyleApi is created in the wiring section.
+const chartOpts = () => ({ angleFmt, style: chartStyleApi.style() });
 
 // UI wiring.
 const $ = id => document.getElementById(id);
@@ -690,46 +684,6 @@ async function ensureSky() {
   return skyLoadPromise;
 }
 
-// Customize-chart panel: free-form numeric inputs generated from the
-// chart.js style descriptors (arbitrary sizes, no caps).
-// Any positive finite value is accepted; anything else reverts to the
-// current value. Overrides persist in localStorage; changes re-render the
-// wheel SVG in place (the details element is untouched, so it stays open).
-function styleParam(sec, key) {
-  return CHART_STYLE_SECTIONS.find(s => s.id === sec).params.find(q => q.key === key);
-}
-function buildChartStyleHTML() {
-  const st = chartStyle();
-  let h = '<details class="chart-style"><summary>Customize chart</summary>';
-  for (const sec of CHART_STYLE_SECTIONS) {
-    h += `<div class="cs-sec"><h4>${sec.title}</h4>`;
-    for (const p of sec.params) {
-      const v = st[sec.id][p.key];
-      h += `<label class="cs-row"><span class="cs-lab"${p.hint ? ` title="${p.hint}"` : ''}>${p.label}</span>`
-        + `<input type="number" step="${p.step}" value="${v}"`
-        + ` data-sec="${sec.id}" data-key="${p.key}" aria-label="${sec.title}: ${p.label}">`
-        + `</label>`;
-    }
-    h += '</div>';
-  }
-  h += '<button id="cs-reset" class="ghost" type="button">Reset to defaults</button></details>';
-  return h;
-}
-// Returns the parsed value, or null when the raw text is not acceptable
-// (the caller reverts the input then). Params with allowZero (e.g. the
-// label-separation multiplier) accept 0; everything else needs v > 0.
-function parseStyleNum(raw, allowZero) {
-  const v = parseFloat(raw);
-  return (Number.isFinite(v) && (v > 0 || (v === 0 && allowZero))) ? v : null;
-}
-function setChartStyleOverride(sec, key, v) {
-  const def = defaultChartStyle()[sec][key];
-  if (!chartStyleOverrides[sec]) chartStyleOverrides[sec] = {};
-  if (v === def) delete chartStyleOverrides[sec][key];
-  else chartStyleOverrides[sec][key] = v;
-  if (!Object.keys(chartStyleOverrides[sec]).length) delete chartStyleOverrides[sec];
-  try { localStorage.setItem(CSTYLE_KEY, JSON.stringify(chartStyleOverrides)); } catch (e) {}
-}
 function rerenderChartSVG() {
   if (!lastOut) return;
   hideChartTip();
@@ -737,29 +691,6 @@ function rerenderChartSVG() {
   lastChartSVG = svg;
   const wrap = document.querySelector('#panel-chart .chart-wrap');
   if (wrap) wrap.innerHTML = svg;
-}
-function wireChartStyle(root) {
-  const det = root.querySelector('.chart-style');
-  if (!det) return;
-  det.querySelectorAll('input[type=number]').forEach(inp => {
-    // 'change' (not 'input'): re-render once per committed edit, and an
-    // invalid entry reverts instead of clamping.
-    inp.addEventListener('change', () => {
-      const v = parseStyleNum(inp.value, styleParam(inp.dataset.sec, inp.dataset.key).allowZero);
-      if (v == null) { inp.value = chartStyle()[inp.dataset.sec][inp.dataset.key]; return; }
-      inp.value = v;
-      setChartStyleOverride(inp.dataset.sec, inp.dataset.key, v);
-      rerenderChartSVG();
-    });
-  });
-  det.querySelector('#cs-reset').addEventListener('click', () => {
-    chartStyleOverrides = {};
-    try { localStorage.removeItem(CSTYLE_KEY); } catch (e) {}
-    det.querySelectorAll('input[type=number]').forEach(inp => {
-      inp.value = styleParam(inp.dataset.sec, inp.dataset.key).def;
-    });
-    rerenderChartSVG();
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -887,7 +818,7 @@ function renderResults(out, meta, outerOuts = []) {
     + `<div class="chart-cap">Whole-sign houses \u00B7 1st house = Ascendant\u2019s sign `
     + `\u00B7 Ptolemaic aspects, 3\u00B0 orb \u00B7 true node axis `
     + `<button id="dbgcopy" class="ghost" type="button" title="Copy chart debug state as JSON">Copy debug</button></div>`
-    + buildChartStyleHTML();
+    + chartStyleApi.html();
   $('views').dataset.ready = '1';
   // Mobile: scroll results into view (input card is above the fold).
   if (window.matchMedia('(max-width: 640px)').matches) {
@@ -910,7 +841,7 @@ function renderResults(out, meta, outerOuts = []) {
   });
   const dbgBtn = $('panel-chart').querySelector('#dbgcopy');
   if (dbgBtn) dbgBtn.addEventListener('click', copyDebug);
-  wireChartStyle($('panel-chart'));
+  chartStyleApi.wire($('panel-chart'));
   maybeRefreshExtras(true);
 }
 
@@ -1380,6 +1311,12 @@ function setDrawerOpen(open, focus) {
 
 // ---------------------------------------------------------------------------
 // Module wiring: extracted concerns, composed here.
+// Customize-chart panel + persisted style overrides; a committed change
+// re-renders the wheel in place.
+const chartStyleApi = createChartStyle({
+  storage: safeStorage,
+  onChange: () => rerenderChartSVG(),
+});
 // Download loading animation (owns its armed flag and RAF state).
 const loader = createLoader({
   mount: html => { $('panel-table').innerHTML = html; },
