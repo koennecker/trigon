@@ -114,10 +114,15 @@ up the same way.
 - `share.js` — pure share-link state packing.
 
 **Input & time**
-- `app.js` — the orchestrator (~1400 lines): drawer, tabs, calculation
-  pipeline, live patcher, CSV downloads, delegated event handlers, and
-  the chart point tooltip (delegated pointer/focus handlers on the chart
-  panel; station values read back from the table cells at hover time).
+- `app.js` — the composition root (~1100 lines): drawer, tabs,
+  calculation pipeline, live patcher, CSV downloads, and wiring for the
+  extracted factories below. The core chart session state lives in one
+  object, `S` (single writer: the run/render path; everything else
+  reads).
+- `datetime-groups.js` — the date/time field groups behind every input:
+  hidden y/era/mo/d/h/mi/s fields, the unified text inputs' get/set,
+  commit sanitizing (incl. the 1582 cutover gap snap), forward-only
+  range pairs, and picker bounds.
 - `datetime.js` — one unified date+time input with native-picker-like
   segments.
 - `datepicker.js` — calendar popup with BCE support.
@@ -127,8 +132,21 @@ up the same way.
 - `animation.js` — time-lapse animation of the ephemeris over a date range.
 - `location.js` — city search, geolocation, manual coordinates, timezone
   derivation.
+- `outer-wheels.js` — outer wheel (biwheel/triwheel) panels: wheel list,
+  per-wheel UTC datetime + label editing, and the animation target
+  (root or one wheel) consumed by clock/animation.
 
 **Display**
+- `loader.js` — the download loading animation (zodiac glyph morph),
+  shown only while uncached data downloads; owns its armed flag, which
+  the run path sets per calculation (live ticks never arm it).
+- `chart-style.js` — the Customize-chart panel and its persisted
+  overrides (`astroweb-chart-style` in localStorage), generated from
+  the `chart.js` style descriptors.
+- `chart-tooltip.js` — chart point hover/focus tooltips: delegated
+  panel events, element lifecycle, edge-aware positioning. The data
+  comes from `table.js` `pointTooltip`, assembled by `app.js` (station
+  values read back from the table cells at hover time).
 - `format.js` — pure display formatting: angles (`dms`/`compact`/`dec`
   via `effFmt()`), `fmtSpeedDR` (D/R suffix), `fmtLon`, `fmtDec`,
   `gotoButtonHTML`, `rowsToCSV`, planet/sign colors
