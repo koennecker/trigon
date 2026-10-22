@@ -867,27 +867,18 @@
     Julian calendar. BCE dates back to 12999 BCE are supported: they are read as local mean
     time at the site longitude (time zones did not exist yet) and always use the Swiss
     Ephemeris data files, never the built-in approximation. Angles can be shown as degrees/arcminutes/arcseconds or decimal degrees.
-    The Aspects tab finds exact (0&deg; orb) perfectings by bracketing sign changes of the
-    wrapped angular separation on a coarse grid and refining with secant/bisection; the
-    grid step adapts to the fastest selected pair (5 days with the Moon in play, up to
-    120 days for outer planets — a step keeping the separation change under 45&deg;
-    provably brackets every transverse root). The
-    Retrograde tab scans speed-zero crossings the same way on a 5-day grid and
-    groups them into shadow-extended periods. The
-    Ingresses tab finds sign-boundary crossings on a grid sized to the fastest
-    selected body (under 15&deg; of motion per step, so no boundary is skipped).
+    The Aspects tab finds exact (0&deg; orb) perfectings; the Retrograde tab groups
+    speed-zero crossings into shadow-extended periods; the Ingresses tab finds
+    sign-boundary crossings.
     Aspect searches accept optional conditions (judged at the perfecting
     instant; groups are ANDed, conditions within a group are ORed): signs of the pair or any other body by sign, traditional ruler,
     element, quadruplicity, or co-presence; extra aspects by orb or by whole
     sign; direction of motion; speed percentile against 1800&ndash;2300 statistics;
     and heliacal phase by solar elongation (combust within 8.5&deg;, under the
     beams within 15&deg;, west of the Sun = morning, east = evening).
-    Search ranges are unbounded — outer-planet aspects over centuries are fine,
-    though very long ranges take a while to scan. Every results table has a CSV
-    download button at its top.
+    Search ranges are unbounded.
     The positions table also shows each planet&rsquo;s previous and next station
-    (Mercury&ndash;Pluto, scanned over a window set by Mars — the longest station
-    cycle at &plusmn;850 days), the bracketing
+    (Mercury&ndash;Pluto), the bracketing
     new/full moons, and — for the seven classical planets — the decan lord
     (Chaldean order, or the Indian triplicity-domicile sequence), Egyptian bound
     lord, Dorothean triplicity lords (by day/night sect), exaltation lord, and
