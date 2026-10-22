@@ -75,22 +75,38 @@ let lotsOpts = readLotOptions(safeStorage);
 // and the prenatal syzygy longitude once the extras scan has run.
 let catalogSelection = readCatalogSelection(safeStorage);
 /** @type {number|null} */
-let lastSyzygyLon = null;
+// ---------------------------------------------------------------------------
+// Core chart session state. Single writer: run() and its render path
+// (renderResults / updateLiveResults) — every other module reads.
+// Everything else that looks like state is either a persisted preference
+// owned by its own control (above), section-local bookkeeping (extras,
+// sky, tick caches), or factory-owned state in the extracted modules.
+//   out       last computed ephemeris output (null before the first run)
+//   meta      its display stamp line
+//   instantMs the chart instant, ms since the Unix epoch (UTC)
+//   inp       last chart input {jd, lat, lon, ...}
+//   outerOuts computed outer wheels [{out, utcMs, label}]
+//   mod       the loaded ephemeris module handle
+//   useSwiss  engine of the last run (true = Swiss files, false = Moshier)
+//   syzygyLon longitude of the prenatal syzygy for the current chart
+const S = {
+  out: null, meta: '', instantMs: null, inp: null, outerOuts: [],
+  mod: null, useSwiss: true, syzygyLon: null,
+};
 
 // Decan method for the dignity columns / lordship deep dive. Persisted.
 let digOpts = readDignityOpts(safeStorage);
 
 // Last WASM module + engine, kept so the table extras (prev/next
 // stations, lunations) can scan around the chart instant.
-let lastMod = null, lastUseSwiss = true;
 let extrasToken = 0, extrasJd = NaN;
 let lordsSectShown = null;
 
 // Dignity options for a chart: the persisted decan method plus day/night
 // from the Sun's true altitude (drives Dorothean triplicity primaries).
 function digFull(out) {
-  const isDay = lastInp && lastInstantMs != null
-    ? sunAltitudeDeg(out, lastInstantMs, lastInp.lat, lastInp.lon) > 0
+  const isDay = S.inp && S.instantMs != null
+    ? sunAltitudeDeg(out, S.instantMs, S.inp.lat, S.inp.lon) > 0
     : true;
   return { decan: digOpts.decan, isDay };
 }
@@ -204,8 +220,6 @@ function readInputs(utcMs = null) {
 }
 
 // Last rendered results, so the angle-format toggle can re-render in place.
-let lastOut = null, lastMeta = '', lastInstantMs = null, lastOuterOuts = [];
-let lastInp = null;                 // last chart input {jd, lat, lon, ...}
 let skyUI = null;
 // Shared Sky init promise: concurrent callers (tab switch, retrograde
 // animate) all await the same load instead of racing a boolean flag.
@@ -215,7 +229,7 @@ function setAngleFmt(f) {
   if (f !== 'dms' && f !== 'dec') return;
   angleFmt = f;
   writeAngleFmt(safeStorage, f);
-  if (lastOut) renderResults(lastOut, lastMeta);
+  if (S.out) renderResults(S.out, S.meta);
 }
 
 // Lots option toggles: one delegated listener (the section is rebuilt on
@@ -258,16 +272,16 @@ $('panel-table').addEventListener('change', e => {
   }
   if (t.classList && t.classList.contains('decan-method')) {    digOpts = { decan: t.value === 'indian' ? 'indian' : 'chaldean' };
     writeDignityOpts(safeStorage, digOpts);
-    if (lastOut) renderResults(lastOut, lastMeta);
+    if (S.out) renderResults(S.out, S.meta);
     return;
   }
   if (!t.classList || !t.classList.contains('lots-opt')) return;
   lotsOpts = { ...lotsOpts, [t.dataset.opt]: t.checked };
   writeLotOptions(safeStorage, lotsOpts);
   const el = document.querySelector('#panel-table #lots-section');
-  if (el && lastOut && lastInp && lastInstantMs != null) {
+  if (el && S.out && S.inp && S.instantMs != null) {
     el.outerHTML = buildLotsHTML(
-      computeLots(lastOut, lastInstantMs, lastInp.lat, lastInp.lon, lotsOpts), effFmt(), lotsOpts);
+      computeLots(S.out, S.instantMs, S.inp.lat, S.inp.lon, lotsOpts), effFmt(), lotsOpts);
   }
 });
 
@@ -338,8 +352,8 @@ async function ensureSky() {
         skyUI = mod.createSkyUI({
           // Sky uses the root chart only; outer wheels are a chart-tab
           // concept and never reach the sky.
-          getEphemeris: () => (lastOut && lastInp && lastInstantMs != null)
-            ? { out: lastOut, inp: lastInp, utcMs: lastInstantMs } : null,
+          getEphemeris: () => (S.out && S.inp && S.instantMs != null)
+            ? { out: S.out, inp: S.inp, utcMs: S.instantMs } : null,
           store: { get: epheGet, put: ephePut },
           setLoading: label => {
             const el = $('sky-loading');
@@ -364,9 +378,9 @@ async function ensureSky() {
 }
 
 function rerenderChartSVG() {
-  if (!lastOut) return;
+  if (!S.out) return;
   chartTip.hide();
-  const svg = renderChart(lastOut, { ...chartOpts(), outerWheels: lastOuterOuts });
+  const svg = renderChart(S.out, { ...chartOpts(), outerWheels: S.outerOuts });
   lastChartSVG = svg;
   const wrap = document.querySelector('#panel-chart .chart-wrap');
   if (wrap) wrap.innerHTML = svg;
@@ -380,17 +394,17 @@ function rerenderChartSVG() {
 function chartTipData(g) {
   const key = g.dataset.point;
   const wheel = parseInt(g.dataset.wheel || '0', 10);
-  let out = lastOut, utcMs = lastInstantMs, stations = null;
+  let out = S.out, utcMs = S.instantMs, stations = null;
   if (wheel > 0) {
-    const w = lastOuterOuts[wheel - 1];
+    const w = S.outerOuts[wheel - 1];
     if (!w) return null;
     out = w.out; utcMs = w.utcMs;
   }
   if (!out) return null;
   let dig;
   if (wheel > 0) {
-    dig = lastInp
-      ? { decan: digOpts.decan, isDay: sunAltitudeDeg(out, utcMs, lastInp.lat, lastInp.lon) > 0 }
+    dig = S.inp
+      ? { decan: digOpts.decan, isDay: sunAltitudeDeg(out, utcMs, S.inp.lat, S.inp.lon) > 0 }
       : { decan: digOpts.decan, isDay: true };
   } else {
     dig = digFull(out);
@@ -407,17 +421,17 @@ function chartTipData(g) {
 }
 
 function renderResults(out, meta, outerOuts = []) {
-  lastOut = out; lastMeta = meta; lastOuterOuts = outerOuts;
+  S.out = out; S.meta = meta; S.outerOuts = outerOuts;
   lastChartSVG = renderChart(out, { ...chartOpts(), outerWheels: outerOuts });
   $('views-head').innerHTML =
       `<div class="res-brand"><img class="logo" src="logo.svg" alt="">Trigon</div>`
     + `<div class="meta" style="margin-bottom:4px">${meta}</div>`;
   const dig = digFull(out);
   lordsSectShown = dig.isDay;
-  const lotsRes = lastInp && lastInstantMs != null
-    ? computeLots(out, lastInstantMs, lastInp.lat, lastInp.lon, lotsOpts) : null;
-  const catRes = lastInp && lastInstantMs != null
-    ? computeCatalogLots(out, lastInstantMs, lastInp.lat, lastInp.lon, lotsOpts, catalogSelection, lastSyzygyLon) : null;
+  const lotsRes = S.inp && S.instantMs != null
+    ? computeLots(out, S.instantMs, S.inp.lat, S.inp.lon, lotsOpts) : null;
+  const catRes = S.inp && S.instantMs != null
+    ? computeCatalogLots(out, S.instantMs, S.inp.lat, S.inp.lon, lotsOpts, catalogSelection, S.syzygyLon) : null;
   $('panel-table').innerHTML = buildTableHTML(out, effFmt(), dig, { glyphs: glyphsOn, angleMode })
     + buildSyzygyHTML(null)
     + (lotsRes ? buildLotsHTML(lotsRes, effFmt(), lotsOpts) : '')
@@ -442,12 +456,12 @@ function renderResults(out, meta, outerOuts = []) {
   if (sizeBtn) sizeBtn.addEventListener('click', () => {
     angleMode = angleMode === 'compact' ? 'full' : 'compact';
     writeAngleMode(safeStorage, angleMode);
-    renderResults(lastOut, lastMeta);
+    renderResults(S.out, S.meta);
   });
   const glyphBtn = $('panel-table').querySelector('#glyph-toggle');
   if (glyphBtn) glyphBtn.addEventListener('click', () => {
     glyphsOn = !glyphsOn; writeGlyphsPref(safeStorage, glyphsOn);
-    renderResults(lastOut, lastMeta);
+    renderResults(S.out, S.meta);
   });
   const dbgBtn = $('panel-chart').querySelector('#dbgcopy');
   if (dbgBtn) dbgBtn.addEventListener('click', copyDebug);
@@ -459,15 +473,15 @@ function renderResults(out, meta, outerOuts = []) {
 // current chart state (selection change, syzygy arrival). The catalog
 // browser DOM is left untouched so its scroll and focus survive.
 function refreshCatalogAndLords() {
-  if (!lastOut || !lastInp || lastInstantMs == null) return;
-  const herm = computeLots(lastOut, lastInstantMs, lastInp.lat, lastInp.lon, lotsOpts);
-  const cat = computeCatalogLots(lastOut, lastInstantMs, lastInp.lat, lastInp.lon,
-    lotsOpts, catalogSelection, lastSyzygyLon);
+  if (!S.out || !S.inp || S.instantMs == null) return;
+  const herm = computeLots(S.out, S.instantMs, S.inp.lat, S.inp.lon, lotsOpts);
+  const cat = computeCatalogLots(S.out, S.instantMs, S.inp.lat, S.inp.lon,
+    lotsOpts, catalogSelection, S.syzygyLon);
   const selDiv = document.querySelector('#panel-table #catalog-selected');
   if (selDiv) selDiv.innerHTML = buildCatalogSelectedHTML(cat.values, effFmt());
   const lords = document.querySelector('#panel-table #lords-section');
-  if (lords) lords.outerHTML = buildLordshipHTML(lastOut,
-    [...herm.values, ...cat.values.filter(v => v.lon != null)], digFull(lastOut));
+  if (lords) lords.outerHTML = buildLordshipHTML(S.out,
+    [...herm.values, ...cat.values.filter(v => v.lon != null)], digFull(S.out));
 }
 
 // Table extras: prev/next stations (Mercury..Pluto) and the bracketing
@@ -477,13 +491,13 @@ function refreshCatalogAndLords() {
 // patch the DOM; live ticks only re-run it once the instant has drifted
 // ~30 min from the last pass.
 function maybeRefreshExtras(force = false) {
-  const jd = lastInstantMs == null ? null : lastInstantMs / 86400000 + JD_UNIX_EPOCH;
-  if (jd == null || !lastMod) return;
+  const jd = S.instantMs == null ? null : S.instantMs / 86400000 + JD_UNIX_EPOCH;
+  if (jd == null || !S.mod) return;
   if (!force && Number.isFinite(extrasJd) && Math.abs(jd - extrasJd) < 0.02) return;
   extrasJd = jd;
   const tk = ++extrasToken;
   try {
-    const eph = ephProvider(lastMod, lastUseSwiss, (1 << 10) - 1);
+    const eph = ephProvider(S.mod, S.useSwiss, (1 << 10) - 1);
     try {
       const scan = (jd0, step, n) => {
         const grid = [];
@@ -513,8 +527,8 @@ function maybeRefreshExtras(force = false) {
       // Feed the prenatal syzygy to the catalog (Syzygy / Ruler Syzygy
       // lots) and rebuild the catalog table + deep dive with it.
       const newSyzLon = syz.prev ? syz.prev.moonLon : null;
-      if (tk === extrasToken && newSyzLon !== lastSyzygyLon) {
-        lastSyzygyLon = newSyzLon; refreshCatalogAndLords();
+      if (tk === extrasToken && newSyzLon !== S.syzygyLon) {
+        S.syzygyLon = newSyzLon; refreshCatalogAndLords();
       }
     } finally { eph.free(); }
   } catch (e) {
@@ -546,11 +560,11 @@ async function copyText(t) {
 
 async function shareChart() {
   const btn = $('share');
-  if (lastInstantMs == null) return;
+  if (S.instantMs == null) return;
   const lat = parseFloat($('lat').value), lon = parseFloat($('lon').value);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
   // Share all wheels: root triplet plus one per outer wheel.
-  const states = [{ lat, lon, utcMs: lastInstantMs }];
+  const states = [{ lat, lon, utcMs: S.instantMs }];
   for (const w of outerApi.readPanels()) states.push({ lat, lon, utcMs: w.utcMs });
   const url = location.origin + location.pathname + shareLinks(states);
   const ok = await copyText(url);
@@ -728,7 +742,7 @@ function updateLiveResults(out, stamp) {
   // the markup changed, so identical seconds cost a string compare, not a
   // re-parse.
   if (chartVisible) {
-    const svg = renderChart(out, { ...chartOpts(), outerWheels: lastOuterOuts });
+    const svg = renderChart(out, { ...chartOpts(), outerWheels: S.outerOuts });
     if (svg !== lastChartSVG) {
       chartTip.hide();
       const wrap = document.querySelector('#panel-chart .chart-wrap');
@@ -741,39 +755,39 @@ function updateLiveResults(out, stamp) {
   // most ticks cost a string build only, not a DOM swap + layout.
   if (tableVisible) {
   const lotsEl = document.querySelector('#panel-table #lots-section');
-  if (lotsEl && lastInp && lastInstantMs != null) {
+  if (lotsEl && S.inp && S.instantMs != null) {
     const lh = buildLotsHTML(
-      computeLots(out, lastInstantMs, lastInp.lat, lastInp.lon, lotsOpts), effFmt(), lotsOpts);
+      computeLots(out, S.instantMs, S.inp.lat, S.inp.lon, lotsOpts), effFmt(), lotsOpts);
     if (lh !== lastLotsHTML) { lotsEl.outerHTML = lh; lastLotsHTML = lh; }
   }
   // The selected catalog lots likewise (the browser DOM stays untouched).
   const catSelEl = document.querySelector('#panel-table #catalog-selected');
-  if (catSelEl && lastInp && lastInstantMs != null) {
+  if (catSelEl && S.inp && S.instantMs != null) {
     const ch = buildCatalogSelectedHTML(
-      computeCatalogLots(out, lastInstantMs, lastInp.lat, lastInp.lon,
-        lotsOpts, catalogSelection, lastSyzygyLon).values, effFmt());
+      computeCatalogLots(out, S.instantMs, S.inp.lat, S.inp.lon,
+        lotsOpts, catalogSelection, S.syzygyLon).values, effFmt());
     if (ch !== lastCatSelHTML) { catSelEl.innerHTML = ch; lastCatSelHTML = ch; }
   }
   // The deep dive only changes wholesale at a sect flip (triplicity
   // primaries swap); rebuild it then, not every tick (it also carries
   // the decan-method <select>, which a rebuild would close mid-use).
   const lordsEl = document.querySelector('#panel-table #lords-section');
-  if (lordsEl && lastInp && lastInstantMs != null) {
+  if (lordsEl && S.inp && S.instantMs != null) {
     const dig = digFull(out);
     if (dig.isDay !== lordsSectShown) {
       lordsSectShown = dig.isDay;
-      const lr = computeLots(out, lastInstantMs, lastInp.lat, lastInp.lon, lotsOpts);
-      const cr = computeCatalogLots(out, lastInstantMs, lastInp.lat, lastInp.lon,
-        lotsOpts, catalogSelection, lastSyzygyLon);
+      const lr = computeLots(out, S.instantMs, S.inp.lat, S.inp.lon, lotsOpts);
+      const cr = computeCatalogLots(out, S.instantMs, S.inp.lat, S.inp.lon,
+        lotsOpts, catalogSelection, S.syzygyLon);
       lordsEl.outerHTML = buildLordshipHTML(out,
         [...lr.values, ...cr.values.filter(v => v.lon != null)], dig);
     }
   }
   } // if (tableVisible)
-  lastOut = out;
+  S.out = out;
   // Keep the stored meta stamp fresh so a mid-clock format toggle re-renders
   // with the current second; the next tick corrects it regardless.
-  lastMeta = lastMeta.replace(/(<span id="meta-stamp">UTC )[^<]*/, '$1' + stamp);
+  S.meta = S.meta.replace(/(<span id="meta-stamp">UTC )[^<]*/, '$1' + stamp);
 }
 
 // Latest run wins: guards overlapping auto-run/clock/manual calculations.
@@ -793,7 +807,7 @@ async function run(useSwiss, opts = {}) {  const token = ++runToken; // overlapp
   // second is the flicker. Keep the previous render visible until the new one
   // is ready, then patch it in place.
   if (!opts.live && !patchReuse) { $('panel-table').innerHTML = ''; $('panel-chart').innerHTML = ''; delete $('views').dataset.ready; }
-  lastOut = null;
+  S.out = null;
   // The loader appears only while uncached data downloads (never on quiet
   // live ticks): fetchEphe/ensureWasm show it on a cache miss.
   loader.arm(!opts.live);
@@ -811,7 +825,7 @@ async function run(useSwiss, opts = {}) {  const token = ++runToken; // overlapp
   if (!opts.live) $('calc').disabled = true;
   try {
     const mod = await ephe.ensureWasm(status);
-    lastMod = mod; lastUseSwiss = useSwiss;
+    S.mod = mod; S.useSwiss = useSwiss;
     if (useSwiss) {
       const fpl = epheFile('sepl', inp.y);
       const fmo = epheFile('semo', inp.y);
@@ -837,8 +851,8 @@ async function run(useSwiss, opts = {}) {  const token = ++runToken; // overlapp
     }
     if (token !== runToken) return; // superseded by a newer run
     loader.hide(); // downloads done (or were cached and never shown)
-    lastInstantMs = inp.utcMs;
-    lastInp = inp;
+    S.instantMs = inp.utcMs;
+    S.inp = inp;
     // Live clock ticks and skip steps stamp the exact second; manual/auto
     // runs use minutes. Formatted from the JD, not Date: toISOString is
     // proleptic Gregorian and skews pre-1582 dates.
@@ -849,7 +863,7 @@ async function run(useSwiss, opts = {}) {  const token = ++runToken; // overlapp
       + (inp.bce ? 'local mean time \u00B7 ' : '')
       + (useSwiss ? 'Swiss Ephemeris (JPL-based .se1 files)' : 'Moshier analytic ephemeris (approximate)');
     if ((opts.live || patchReuse) && $('views').dataset.ready === '1' && $('meta-stamp') && $('panel-table')) {
-      lastOuterOuts = outerOuts;
+      S.outerOuts = outerOuts;
       updateLiveResults(out, stamp);
       if ($('panel-table').style.display !== 'none') maybeRefreshExtras(false);
     } else {
@@ -932,7 +946,7 @@ const dtg = createDateTimeGroups({
 const chartTip = createChartTooltip({ panel: () => $('panel-chart'), tipData: chartTipData });
 // Outer wheels (biwheel/triwheel panels + animation target).
 const outerApi = createOuterWheels({
-  el: $, rootInstantMs: () => lastInstantMs,
+  el: $, rootInstantMs: () => S.instantMs,
   panels: () => document.querySelectorAll('#outer-panels .outer-panel'),
   panelInput: i => document.querySelector(`#outer-panels .outer-dt[data-idx="${i}"]`),
   rootRadio: () => document.querySelector('input[name="anim-target"][value="0"]'),
