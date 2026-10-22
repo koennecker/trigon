@@ -2,7 +2,8 @@
 // Run: node --test test/table.test.js  (from site/)
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { BODIES, tableRows, buildTableHTML, speedIndicatorHTML, angleRows } from '../table.js';
+import { BODIES, tableRows, buildTableHTML, speedIndicatorHTML, angleRows, pointTooltip, TOOLTIP_POINT_KEYS } from '../table.js';
+import { fmtLon } from '../format.js';
 
 // Synthetic chart_compute-shaped output: 84 doubles. Bodies 0..11 at
 // slots i*6 ([lon, lat, dist, speedLon, dec, mag]); out[72]=Asc,
@@ -142,5 +143,63 @@ describe('angle rows and display toggles', () => {
     assert.equal(rows[2].spdDir, 'R'); // Mercury retrograde
     assert.ok(rows[0].magHtml.includes('brighter than')); // tooltip
     assert.ok(rows[0].dignCol.domicile); // lord color present
+  });
+});
+
+describe('pointTooltip', () => {
+  const dig = { decan: 'chaldean', isDay: true };
+  const byLabel = tip => Object.fromEntries(tip.fields.map(f => [f.label, f.value]));
+  it('mirrors the Sun table row (stations dashed: Sun has none)', () => {
+    const out = fakeOut();
+    const rows = tableRows(out, 'dms', dig);
+    const tip = pointTooltip('sun', out, 'dms', dig, { prev: 'P', next: 'N' });
+    assert.equal(tip.name, 'Sun');
+    const f = byLabel(tip);
+    assert.equal(f['Longitude'], rows[0].lon);
+    assert.equal(f['Declination'], rows[0].dec);
+    assert.equal(f['Speed'], rows[0].spd);
+    assert.equal(f['Magnitude'], rows[0].mag);
+    assert.equal(f['House'], rows[0].house);
+    assert.equal(f['Prev station'], '—');
+    assert.equal(f['Next station'], '—');
+    assert.equal(f['Domicile'], rows[0].dign.domicile);
+    assert.equal(f['Triplicity'], rows[0].dign.tripFull);
+  });
+  it('passes station text through for Mercury..Pluto, dashes when not supplied', () => {
+    const out = fakeOut();
+    const withStn = byLabel(pointTooltip('mercury', out, 'dms', dig, { prev: 'D Leo 1°', next: 'R Ari 2°' }));
+    assert.equal(withStn['Prev station'], 'D Leo 1°');
+    assert.equal(withStn['Next station'], 'R Ari 2°');
+    const noStn = byLabel(pointTooltip('mercury', out, 'dms', dig));
+    assert.equal(noStn['Prev station'], '—');
+  });
+  it('true node: dashes for dec/speed/magnitude/house and all lords', () => {
+    const f = byLabel(pointTooltip('true-node', fakeOut(), 'dms', dig));
+    assert.equal(f['Declination'], '—');
+    assert.equal(f['Speed'], '—');
+    assert.equal(f['Magnitude'], '—');
+    assert.equal(f['House'], '—');
+    assert.equal(f['Domicile'], '—');
+    assert.ok(!('Speed percentile' in f));
+  });
+  it('angle tooltip: longitude and lords, blanks elsewhere', () => {
+    const out = fakeOut();
+    const tip = pointTooltip('ascendant', out, 'dms', dig);
+    assert.equal(tip.name, 'Ascendant');
+    const f = byLabel(tip);
+    assert.equal(f['Longitude'], angleRows(out, dig)[0].lon);
+    assert.equal(f['Speed'], '—');
+    assert.equal(f['House'], '—');
+    assert.equal(f['Domicile'], angleRows(out, dig)[0].dign.domicile);
+  });
+  it('south node longitude is the true node longitude + 180', () => {
+    const f = byLabel(pointTooltip('south-node', fakeOut(), 'dms', dig));
+    assert.equal(f['Longitude'], fmtLon(20, 'dms')); // fakeOut node at 200
+    assert.equal(f['Domicile'], '—');
+  });
+  it('every tooltip key resolves; unknown keys return null', () => {
+    const out = fakeOut();
+    for (const k of TOOLTIP_POINT_KEYS) assert.ok(pointTooltip(k, out, 'dms', dig), k);
+    assert.equal(pointTooltip('ceres', out, 'dms', dig), null);
   });
 });

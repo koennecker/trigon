@@ -150,6 +150,90 @@ export function angleRows(out, dig, fmt = 'dms', glyphs = false) {
   });
 }
 
+// Point identities for chart hover tooltips: the data-point keys chart.js
+// stamps on its rendered point groups.
+export const TOOLTIP_POINT_KEYS = [
+  'sun', 'moon', 'mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus',
+  'neptune', 'pluto', 'true-node', 'south-node',
+  'ascendant', 'descendant', 'midheaven', 'ic',
+];
+
+// Tooltip data for one chart point, mirroring its positions-table row:
+// same values, same column order, same dashes. `key` is the point's
+// data-point identity. `stations` is {prev, next} display text — the app
+// fills the table's station cells asynchronously, so it reads them back
+// from the table at hover time and passes them in; null renders dashes.
+// Returns {name, color, fields: [{label, value, color?}]} or null for an
+// unknown key.
+export function pointTooltip(key, out, fmt = 'dms', dig = undefined,
+                             stations = null, glyphs = false) {
+  const stn = stations || { prev: dash, next: dash };
+  const dignFields = (d, dc) => d ? [
+    { label: 'Domicile', value: d.domicile, color: dc.domicile },
+    { label: 'Decan', value: d.decan, color: dc.decan },
+    { label: 'Bound', value: d.bound, color: dc.bound },
+    { label: 'Triplicity', value: d.tripFull, color: dc.trip },
+    { label: 'Exaltation', value: d.exalt || dash, color: dc.exalt || undefined },
+    { label: 'D12', value: d.d12, color: dc.d12 },
+    { label: 'D9', value: d.d9, color: dc.d9 },
+  ] : ['Domicile', 'Decan', 'Bound', 'Triplicity', 'Exaltation', 'D12', 'D9']
+        .map(label => ({ label, value: dash }));
+  const blankFields = ['Declination', 'Speed', 'Magnitude', 'House',
+                       'Prev station', 'Next station']
+    .map(label => ({ label, value: dash }));
+
+  const planetIdx = { sun: 0, moon: 1, mercury: 2, venus: 3, mars: 4,
+                      jupiter: 5, saturn: 6, uranus: 7, neptune: 8,
+                      pluto: 9, 'true-node': 10 };
+  if (key in planetIdx) {
+    const ib = planetIdx[key];
+    const r = tableRows(out, fmt, dig, glyphs)[ib];
+    const fields = [
+      { label: 'Longitude', value: r.lon },
+      { label: 'Declination', value: r.dec },
+      { label: 'Speed', value: r.spd },
+    ];
+    if (r.spdPct != null) {
+      const z = `${r.spdZ >= 0 ? '+' : ''}${r.spdZ.toFixed(2)}`;
+      fields.push({ label: 'Speed percentile', value: `${r.spdPct.toFixed(1)}% (z ${z})` });
+    }
+    fields.push({ label: 'Magnitude', value: r.mag });
+    if (!r.dim) {
+      const mb = magBrightness(ib, out[ib * 6 + 5]);
+      const z = `${mb.z >= 0 ? '+' : ''}${mb.z.toFixed(1)}`;
+      fields.push({ label: 'Magnitude percentile', value: `${mb.pct.toFixed(1)}% (z ${z})` });
+    }
+    fields.push({ label: 'House', value: r.house });
+    const hasStn = ib >= 2 && ib <= 9;
+    fields.push({ label: 'Prev station', value: hasStn ? stn.prev : dash });
+    fields.push({ label: 'Next station', value: hasStn ? stn.next : dash });
+    fields.push(...dignFields(r.dign, r.dignCol || {}));
+    return { name: BODIES[ib], color: PLANET_COLORS[ib], fields };
+  }
+
+  const angleIdx = { ascendant: 0, descendant: 1, midheaven: 2, ic: 3 };
+  if (key in angleIdx) {
+    const a = angleRows(out, dig, fmt, glyphs)[angleIdx[key]];
+    return {
+      name: a.body, color: '#e6edf3',
+      fields: [{ label: 'Longitude', value: a.lon }, ...blankFields,
+               ...dignFields(a.dign, a.dignCol || {})],
+    };
+  }
+
+  if (key === 'south-node') {
+    // The table lists only the True Node; the south node's row is its
+    // longitude (opposite the true node) with dashes elsewhere.
+    const tn = ((out[10 * 6] % 360) + 360) % 360;
+    return {
+      name: 'South Node', color: '#8b949e',
+      fields: [{ label: 'Longitude', value: fmtLon((tn + 180) % 360, fmt, glyphs) },
+               ...blankFields, ...dignFields(null, {})],
+    };
+  }
+  return null;
+}
+
 // Percentile-dot markup for a tableRows row ('' when the body has no
 // indicator). data-pct/data-z carry the numbers for the CSV export, since
 // the dot itself has no text. Exported so app.js's live-cell patcher can

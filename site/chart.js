@@ -152,6 +152,12 @@ const PLANET_GLYPHS = ['\u2609', '\u263D', '\u263F', '\u2640', '\u2642',
 const PLANET_COLORS = ['#58a6ff', '#ffd75e', '#9fe870', '#ff9d5c', '#ff6b6b',
                        '#7ee787', '#d2a8ff', '#f778ba', '#79c0ff', '#ffa657'];
 const NODE_N = '\u260A', NODE_S = '\u260B'; // ☊ ☋ (U+260A/B, not U+264A/B which are ♊/♋)
+// Stable point identities for hover tooltips: data-point keys on the
+// rendered groups, resolved to table data by the app via table.js.
+const POINT_KEYS = ['sun', 'moon', 'mercury', 'venus', 'mars', 'jupiter',
+                    'saturn', 'uranus', 'neptune', 'pluto'];
+const POINT_NAMES = ['Sun', 'Moon', 'Mercury', 'Venus', 'Mars', 'Jupiter',
+                     'Saturn', 'Uranus', 'Neptune', 'Pluto'];
 
 const ASPECTS = [
   { angle: 0,   glyph: '\u260C', color: '#e6edf3', name: 'conjunction' },
@@ -398,16 +404,21 @@ export function renderChartSVG(out, opts = {}) {
   for (let i = 0; i < 10; i++) {
     pts.push({ lon: norm360(out[i * 6]), glyph: PLANET_GLYPHS[i], color: PLANET_COLORS[i],
                retro: out[i * 6 + 3] < 0,
-               size: 22, label: degLabel(out[i * 6], angleFmt), kind: 'planet', idx: i });
+               size: 22, label: degLabel(out[i * 6], angleFmt), kind: 'planet', idx: i,
+               key: POINT_KEYS[i], name: POINT_NAMES[i] });
   }
-  const angle = (lon, glyph) => ({ lon: norm360(lon), glyph, color: '#e6edf3',
-    size: 14, label: degLabel(lon, angleFmt), kind: 'angle', idx: -1 });
-  pts.push(angle(asc, 'As'), angle(norm360(asc + 180), 'Ds'),
-           angle(mc, 'Mc'), angle(norm360(mc + 180), 'Ic'));
+  const angle = (lon, glyph, key, name) => ({ lon: norm360(lon), glyph, color: '#e6edf3',
+    size: 14, label: degLabel(lon, angleFmt), kind: 'angle', idx: -1, key, name });
+  pts.push(angle(asc, 'As', 'ascendant', 'Ascendant'),
+           angle(norm360(asc + 180), 'Ds', 'descendant', 'Descendant'),
+           angle(mc, 'Mc', 'midheaven', 'Midheaven'),
+           angle(norm360(mc + 180), 'Ic', 'ic', 'IC'));
   pts.push({ lon: tnode, glyph: NODE_N, color: '#c9d1d9', size: 20,
-             label: degLabel(tnode, angleFmt), kind: 'node', idx: -1 });
+             label: degLabel(tnode, angleFmt), kind: 'node', idx: -1,
+             key: 'true-node', name: 'True Node' });
   pts.push({ lon: norm360(tnode + 180), glyph: NODE_S, color: '#8b949e', size: 20,
-             label: degLabel(tnode, angleFmt), kind: 'node', idx: -1 });
+             label: degLabel(tnode, angleFmt), kind: 'node', idx: -1,
+             key: 'south-node', name: 'South Node' });
 
   // Effective longitudes for placement (see effLon): p.lon stays the actual
   // longitude for label text and aspect orb math.
@@ -558,7 +569,15 @@ export function renderChartSVG(out, opts = {}) {
       const attrs = ` font-size="${size}" fill="${fill}"${w}`;
       return `<tspan x="${tx.toFixed(1)}" y="${ty.toFixed(1)}"${attrs}>${t.text}</tspan>`;
     }).join('');
-    s += `<text text-anchor="middle" dominant-baseline="central" font-size="${st.lblTextSize}">${tspans}</text>`;
+    // Hoverable point group: a transparent hit disc over the token stack
+    // (its center sits mid-stack) carries the point identity for the app's
+    // tooltip; the disc is the focus/hover target, text stays passive.
+    const hx = CX + ux * (st.rHug - 1.5 * TOKEN_PITCH);
+    const hy = CY + uy * (st.rHug - 1.5 * TOKEN_PITCH);
+    const hitR = Math.max(18, TOKEN_PITCH * 1.9);
+    s += `<g class="chart-point" data-point="${p.key}" tabindex="0" aria-label="${p.name}">`
+       + `<circle class="pt-hit" cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="${hitR.toFixed(1)}" fill="transparent"/>`
+       + `<text text-anchor="middle" dominant-baseline="central" font-size="${st.lblTextSize}">${tspans}</text></g>`;
   });
 
   // --- Ptolemaic aspects between the 10 planets, 3° orb ---
@@ -647,9 +666,12 @@ export function renderChartSVG(out, opts = {}) {
       // run declutterArc over the full 360, map back.
       const placed = placeOuterGlyphs(pts, rg, ost.glyphSize);
       pts.forEach((p, i) => { p.plon = placed[i]; });
+      pts.forEach((p, i) => { p.key = POINT_KEYS[i]; p.name = POINT_NAMES[i]; });
       for (const p of pts) {
         const [x, y] = P(rg, p.plon);
-        s += text(x, y, p.glyph + TVS, ost.glyphSize, p.color);
+        s += `<g class="chart-point" data-point="${p.key}" data-wheel="${wi + 1}" tabindex="0" aria-label="${p.name} (wheel ${wi + 1})">`
+           + `<circle class="pt-hit" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(ost.glyphSize * 0.95).toFixed(1)}" fill="transparent"/>`
+           + text(x, y, p.glyph + TVS, ost.glyphSize, p.color) + '</g>';
         if (p.retro) {
           const [rx, ry] = P(rg - ost.glyphSize * 0.75, p.plon);
           s += text(rx, ry, 'R', ost.glyphSize * 0.55, '#8b949e');
@@ -751,14 +773,18 @@ export function renderChartSVGMobile(out, opts = {}) {
   const pts = [];
   for (let i = 0; i < 10; i++) {
     pts.push({ lon: norm360(out[i * 6]), glyph: PLANET_GLYPHS[i], color: PLANET_COLORS[i],
-               kind: 'planet', idx: i });
+               kind: 'planet', idx: i, key: POINT_KEYS[i], name: POINT_NAMES[i] });
   }
-  const angle = (lon, glyph) => ({ lon: norm360(lon), glyph, color: '#e6edf3',
-    kind: 'angle', idx: -1 });
-  pts.push(angle(asc, 'As'), angle(norm360(asc + 180), 'Ds'),
-           angle(mc, 'Mc'), angle(norm360(mc + 180), 'Ic'));
-  pts.push({ lon: tnode, glyph: NODE_N, color: '#c9d1d9', kind: 'node', idx: -1 });
-  pts.push({ lon: norm360(tnode + 180), glyph: NODE_S, color: '#8b949e', kind: 'node', idx: -1 });
+  const angle = (lon, glyph, key, name) => ({ lon: norm360(lon), glyph, color: '#e6edf3',
+    kind: 'angle', idx: -1, key, name });
+  pts.push(angle(asc, 'As', 'ascendant', 'Ascendant'),
+           angle(norm360(asc + 180), 'Ds', 'descendant', 'Descendant'),
+           angle(mc, 'Mc', 'midheaven', 'Midheaven'),
+           angle(norm360(mc + 180), 'Ic', 'ic', 'IC'));
+  pts.push({ lon: tnode, glyph: NODE_N, color: '#c9d1d9', kind: 'node', idx: -1,
+             key: 'true-node', name: 'True Node' });
+  pts.push({ lon: norm360(tnode + 180), glyph: NODE_S, color: '#8b949e', kind: 'node', idx: -1,
+             key: 'south-node', name: 'South Node' });
   pts.forEach((p) => { p.elon = effLon(p.lon); });
 
   // --- PAVA placement for the big outside glyphs ---
@@ -817,7 +843,9 @@ export function renderChartSVGMobile(out, opts = {}) {
     if (isAnchor[pi]) return;
     const th = placed[pi];
     const [x, y] = P(st.rGlyph, th);
-    s += text(x, y, p.glyph + TVS, st.glyphSize, p.color || '#e6edf3');
+    s += `<g class="chart-point" data-point="${p.key}" tabindex="0" aria-label="${p.name}">`
+       + `<circle class="pt-hit" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(st.glyphSize * 0.85).toFixed(1)}" fill="transparent"/>`
+       + text(x, y, p.glyph + TVS, st.glyphSize, p.color || '#e6edf3') + '</g>';
   });
 
   // --- Ptolemaic aspects (same logic as desktop, smaller circle) ---

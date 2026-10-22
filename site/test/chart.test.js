@@ -388,3 +388,38 @@ describe('placeOuterGlyphs', () => {
     assert.equal(placed.length, 3);
   });
 });
+
+describe('chart point hover groups', () => {
+  const keysOf = svg => [...svg.matchAll(/data-point="([a-z-]+)"/g)].map(m => m[1]);
+  it('desktop: one hoverable group per point, all 16 keys', () => {
+    const svg = renderChartSVG(makeOut([10, 40, 80, 120, 160, 200, 240, 280, 320, 350],
+      { asc: 15, mc: 100, node: 200 }), {});
+    const keys = keysOf(svg);
+    assert.equal(keys.length, 16);
+    assert.deepEqual(new Set(keys), new Set([
+      'sun', 'moon', 'mercury', 'venus', 'mars', 'jupiter', 'saturn',
+      'uranus', 'neptune', 'pluto', 'true-node', 'south-node',
+      'ascendant', 'descendant', 'midheaven', 'ic']));
+    // every group carries a hit disc and is keyboard-focusable
+    assert.equal((svg.match(/class="pt-hit"/g) || []).length, 16);
+    assert.equal((svg.match(/class="chart-point"[^>]*tabindex="0"/g) || []).length, 16);
+  });
+  it('mobile: hoverable groups for planets and nodes only (angles are axes)', () => {
+    const svg = renderChartSVGMobile(makeOut([10, 40, 80, 120, 160, 200, 240, 280, 320, 350],
+      { asc: 15, mc: 100, node: 200 }), {});
+    const keys = keysOf(svg);
+    assert.equal(keys.length, 12);
+    assert.ok(!keys.includes('ascendant'));
+    assert.ok(keys.includes('south-node'));
+  });
+  it('outer wheel glyphs are tagged with their wheel number', () => {
+    const root = makeOut([10, 40, 80, 120, 160, 200, 240, 280, 320, 350], { asc: 15, mc: 100 });
+    const outer = makeOut([300, 10, 45, 90, 140, 190, 230, 270, 310, 355], { asc: 15, mc: 100 });
+    const svg = renderChartSVG(root, { outerWheels: [{ out: outer, label: 'Wheel 1' }] });
+    const wheelKeys = [...svg.matchAll(/data-point="([a-z-]+)" data-wheel="1"/g)].map(m => m[1]);
+    assert.equal(wheelKeys.length, 10);
+    assert.deepEqual(new Set(wheelKeys), new Set([
+      'sun', 'moon', 'mercury', 'venus', 'mars', 'jupiter', 'saturn',
+      'uranus', 'neptune', 'pluto']));
+  });
+});

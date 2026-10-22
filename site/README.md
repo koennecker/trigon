@@ -104,15 +104,20 @@ up the same way.
   Dorothean triplicities, exaltations, D12/D9, whole-sign house lords, and
   the lordship deep dive. (Type-checked.)
 - `table.js` — pure builders for the results table (positions, angles,
-  lots, stations, lunations).
+  lots, stations, lunations) + `pointTooltip`, the per-point tooltip data
+  mirroring a positions-table row.
 - `chart.js` — whole-sign wheel geometry + SVG rendering; label declutter
-  per `proto/pava.py`.
+  per `proto/pava.py`. Every point renders inside a `.chart-point` group
+  stamped with its `data-point` key (plus `data-wheel` on outer wheels)
+  and a transparent hit disc — the app's hover/focus tooltip keys off it.
 - `skip.js` — pure core of time stepping (used by clock/animation).
 - `share.js` — pure share-link state packing.
 
 **Input & time**
 - `app.js` — the orchestrator (~1400 lines): drawer, tabs, calculation
-  pipeline, live patcher, CSV downloads, delegated event handlers.
+  pipeline, live patcher, CSV downloads, delegated event handlers, and
+  the chart point tooltip (delegated pointer/focus handlers on the chart
+  panel; station values read back from the table cells at hover time).
 - `datetime.js` — one unified date+time input with native-picker-like
   segments.
 - `datepicker.js` — calendar popup with BCE support.

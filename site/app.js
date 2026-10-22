@@ -18,7 +18,7 @@ import { attachDateTime, clampDT, cmpDT, dtFloor, dtCeil } from './datetime.js';
 import { fmtLon, fmtCoord, fmtSignPos, readAngleFmt, writeAngleFmt, rowsToCSV, gotoButtonHTML,
   readGlyphsPref, writeGlyphsPref, readAngleMode, writeAngleMode } from './format.js';
 import { parseShareHashString, shareLink, shareLinks } from './share.js';
-import { tableRows, buildTableHTML, speedIndicatorHTML, angleRows } from './table.js';
+import { tableRows, buildTableHTML, speedIndicatorHTML, angleRows, pointTooltip } from './table.js';
 import { computeLots, buildLotsHTML, readLotOptions, writeLotOptions, sunAltitudeDeg,
   computeCatalogLots, buildCatalogHTML, buildCatalogSelectedHTML, readCatalogSelection, writeCatalogSelection } from './lots.js';
 import {
@@ -807,6 +807,7 @@ function setChartStyleOverride(sec, key, v) {
 }
 function rerenderChartSVG() {
   if (!lastOut) return;
+  hideChartTip();
   const svg = renderChart(lastOut, { ...chartOpts(), outerWheels: lastOuterOuts });
   lastChartSVG = svg;
   const wrap = document.querySelector('#panel-chart .chart-wrap');
@@ -833,6 +834,109 @@ function wireChartStyle(root) {
       inp.value = styleParam(inp.dataset.sec, inp.dataset.key).def;
     });
     rerenderChartSVG();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Chart point tooltips: hovering (or keyboard-focusing) a point on the
+// wheel shows the same data as its row in the positions table. chart.js
+// stamps each point group with data-point (plus data-wheel on outer
+// wheels); table.js pointTooltip builds the data. Events are delegated
+// on the panel so SVG swaps need no rewiring; the station values are read
+// back from the table cells at hover time, since they are filled
+// asynchronously after the chart renders.
+let chartTipEl = null, chartTipKey = null;
+const escHTML = s => String(s).replace(/[&<>"']/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function hideChartTip() {
+  if (chartTipEl) chartTipEl.style.display = 'none';
+  chartTipKey = null;
+}
+function chartTipData(g) {
+  const key = g.dataset.point;
+  const wheel = parseInt(g.dataset.wheel || '0', 10);
+  let out = lastOut, utcMs = lastInstantMs, stations = null;
+  if (wheel > 0) {
+    const w = lastOuterOuts[wheel - 1];
+    if (!w) return null;
+    out = w.out; utcMs = w.utcMs;
+  }
+  if (!out) return null;
+  let dig;
+  if (wheel > 0) {
+    dig = lastInp
+      ? { decan: digOpts.decan, isDay: sunAltitudeDeg(out, utcMs, lastInp.lat, lastInp.lon) > 0 }
+      : { decan: digOpts.decan, isDay: true };
+  } else {
+    dig = digFull(out);
+    const ib = ['sun', 'moon', 'mercury', 'venus', 'mars', 'jupiter', 'saturn',
+                'uranus', 'neptune', 'pluto', 'true-node'].indexOf(key);
+    if (ib >= 2 && ib <= 9) {
+      const p = document.querySelector(`#panel-table td.stn-prev[data-ib="${ib}"]`);
+      const n = document.querySelector(`#panel-table td.stn-next[data-ib="${ib}"]`);
+      if (p && n) stations = { prev: p.textContent.trim(), next: n.textContent.trim() };
+    }
+  }
+  const data = pointTooltip(key, out, effFmt(), dig, stations, glyphsOn);
+  return data ? { ...data, wheel } : null;
+}
+function moveChartTip(clientX, clientY) {
+  if (!chartTipEl || chartTipEl.style.display === 'none') return;
+  const panel = $('panel-chart');
+  const r = panel.getBoundingClientRect();
+  let x = clientX - r.left + 14, y = clientY - r.top + 14;
+  if (x + chartTipEl.offsetWidth > panel.clientWidth - 4)
+    x = clientX - r.left - chartTipEl.offsetWidth - 10;
+  if (y + chartTipEl.offsetHeight > panel.clientHeight - 4)
+    y = clientY - r.top - chartTipEl.offsetHeight - 10;
+  chartTipEl.style.left = `${Math.max(0, x)}px`;
+  chartTipEl.style.top = `${Math.max(0, y)}px`;
+}
+function showChartTip(g, clientX, clientY) {
+  const panel = $('panel-chart');
+  if (!chartTipEl || !chartTipEl.isConnected) {
+    chartTipEl = document.createElement('div');
+    chartTipEl.id = 'chart-tip';
+    chartTipEl.setAttribute('role', 'tooltip');
+    panel.appendChild(chartTipEl);
+  }
+  const data = chartTipData(g);
+  if (!data) { hideChartTip(); return; }
+  const head = data.wheel > 0 ? `${data.name} \u00B7 wheel ${data.wheel}` : data.name;
+  chartTipEl.innerHTML =
+      `<div class="ct-head" style="color:${data.color}">${escHTML(head)}</div>`
+    + data.fields.map(f =>
+        `<div class="ct-row"><span class="ct-k">${escHTML(f.label)}</span>`
+      + `<span class="ct-v"${f.color ? ` style="color:${f.color}"` : ''}>${escHTML(f.value)}</span></div>`).join('');
+  chartTipEl.style.display = 'block';
+  chartTipKey = `${g.dataset.point}:${data.wheel}`;
+  moveChartTip(clientX, clientY);
+}
+function initChartTooltip() {
+  const panel = $('panel-chart');
+  const keyOf = g => `${g.dataset.point}:${g.dataset.wheel || '0'}`;
+  panel.addEventListener('pointerover', e => {
+    const g = e.target.closest && e.target.closest('.chart-point');
+    if (!g) return;
+    if (chartTipKey !== keyOf(g)) showChartTip(g, e.clientX, e.clientY);
+    else moveChartTip(e.clientX, e.clientY);
+  });
+  panel.addEventListener('pointermove', e => {
+    if (chartTipKey) moveChartTip(e.clientX, e.clientY);
+  });
+  panel.addEventListener('pointerout', e => {
+    const g = e.target.closest && e.target.closest('.chart-point');
+    if (g && !(e.relatedTarget && g.contains(e.relatedTarget))) hideChartTip();
+  });
+  panel.addEventListener('focusin', e => {
+    const g = e.target.closest && e.target.closest('.chart-point');
+    if (!g) return;
+    const r = g.getBoundingClientRect();
+    showChartTip(g, r.left + r.width / 2, r.top + r.height / 2);
+  });
+  panel.addEventListener('focusout', hideChartTip);
+  panel.addEventListener('keydown', e => {
+    if (e.key === 'Escape') hideChartTip();
   });
 }
 
@@ -1161,6 +1265,7 @@ function updateLiveResults(out, stamp) {
   if (chartVisible) {
     const svg = renderChart(out, { ...chartOpts(), outerWheels: lastOuterOuts });
     if (svg !== lastChartSVG) {
+      hideChartTip();
       const wrap = document.querySelector('#panel-chart .chart-wrap');
       if (wrap) wrap.innerHTML = svg;
       lastChartSVG = svg;
@@ -1492,6 +1597,7 @@ function init() {
     b.addEventListener('click', () => setTab(b.dataset.tab)));
   initDateTimeInputs();
   initOuterWheels();
+  initChartTooltip();
   renderOuterPanels();
   animApi.init();
   $('calc').addEventListener('click', () => { animApi.stop(); run(true); });
