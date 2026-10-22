@@ -8,12 +8,10 @@ import { migrateEpheCache, epheGet, ephePut } from './ephe-store.js';
 import { renderChartSVG, renderChartSVGMobile, getLastChartDebug } from './chart.js';
 import { jdFromCal, calFromJd, JD_UNIX_EPOCH, stationsAround, syzygiesAround } from './search.js';
 import {
-  BCE_MIN_ASTRO, CE_MAX_YEAR, eraToAstro, astroToEra, checkYearRange,
-  validDate, daysInMonth, fmtInstant, lmtOffsetHours,
-  cmpDate,
+  BCE_MIN_ASTRO, eraToAstro, fmtInstant, lmtOffsetHours,
 } from './dateapi.js';
 import { openDatePicker } from './datepicker.js';
-import { attachDateTime, clampDT, cmpDT, dtFloor, dtCeil } from './datetime.js';
+import { attachDateTime } from './datetime.js';
 import { fmtLon, fmtCoord, fmtSignPos, readAngleFmt, writeAngleFmt, rowsToCSV, gotoButtonHTML,
   readGlyphsPref, writeGlyphsPref, readAngleMode, writeAngleMode } from './format.js';
 import { parseShareHashString, shareLink, shareLinks } from './share.js';
@@ -32,6 +30,7 @@ import { createLoader } from './loader.js';
 import { createChartStyle } from './chart-style.js';
 import { createOuterWheels } from './outer-wheels.js';
 import { createChartTooltip } from './chart-tooltip.js';
+import { createDateTimeGroups } from './datetime-groups.js';
 import { createAnimation } from './animation.js';
 import { nearestCity } from './cities.js';
 
@@ -128,228 +127,6 @@ function buildTzOptions() {
   }
 }
 
-// Hand-rolled date/time field groups (BCE-capable; the native
-// datetime-local picker cannot represent years before 0001).
-// Group `p` is p-y, p-era, p-mo, p-d, p-h, p-mi, plus p-s when `seconds`.
-// Returns astronomical years (y = 0 is 1 BCE).
-function readDateFields(p, seconds) {
-  const num = (id, label) => {
-    const v = $(id).value.trim();
-    if (!/^-?\d+$/.test(v)) throw new Error(`${label} is incomplete`);
-    return parseInt(v, 10);
-  };
-  const y = eraToAstro(num(`${p}-y`, 'year'), $(`${p}-era`).value);
-  checkYearRange(y);
-  const mo = num(`${p}-mo`, 'month'), d = num(`${p}-d`, 'day');
-  const hh = num(`${p}-h`, 'hour'), mi = num(`${p}-mi`, 'minute');
-  const ss = seconds ? num(`${p}-s`, 'second') : 0;
-  if (mo < 1 || mo > 12) throw new Error('month must be 1-12');
-  if (hh < 0 || hh > 23 || mi < 0 || mi > 59 || ss < 0 || ss > 59)
-    throw new Error(seconds ? 'time must be 00:00:00-23:59:59' : 'time must be 00:00-23:59');
-  if (!validDate(y, mo, d)) {
-    // The cutover gap gets its own message: those dates never existed.
-    if (y === 1582 && mo === 10 && d >= 5 && d <= 14)
-      throw new Error('1582-10-05 through 1582-10-14 never existed (Julian-to-Gregorian cutover)');
-    throw new Error('day is out of range for that month');
-  }
-  return { y, mo, d, hh, mi, ss };
-}
-
-// Write back; only touches fields whose value actually changed, so the live
-// clock ticking every second doesn't fight the user mid-edit.
-function writeDateFields(p, f, seconds) {
-  const { yy, era } = astroToEra(f.y);
-  const set = (id, v) => { const el = $(id); v = String(v); if (el.value !== v) el.value = v; };
-  set(`${p}-y`, yy);
-  const eraEl = $(`${p}-era`);
-  if (eraEl.value !== era) eraEl.value = era;
-  set(`${p}-mo`, f.mo); set(`${p}-d`, f.d);
-  set(`${p}-h`, f.hh); set(`${p}-mi`, f.mi);
-  if (seconds) set(`${p}-s`, f.ss);
-  refreshDTInput(p);
-}
-
-// ---- Unified date+time inputs ----
-// Each date group shows one typable text field ("28 Sep 2026 CE 14:30:00")
-// with native-picker-like segments (see datetime.js) plus a calendar button
-// opening the popup. The y/era/mo/d/h/mi/s inputs are hidden but keep their
-// ids, so readDateFields/writeDateFields and all validation are unchanged;
-// the text field commits through setHiddenDateTime, which dispatches the
-// same change events the old visible fields used to fire.
-
-// Full {y, mo, d, hh, mi, ss} (astronomical y) from a group's hidden
-// inputs, or null when any field is incomplete.
-function groupValue(p, seconds) {
-  const num = id => {
-    const v = $(id).value.trim();
-    return /^\d+$/.test(v) ? parseInt(v, 10) : null;
-  };
-  const yy = num(`${p}-y`), mo = num(`${p}-mo`), d = num(`${p}-d`);
-  const hh = num(`${p}-h`), mi = num(`${p}-mi`);
-  const ss = seconds ? num(`${p}-s`) : 0;
-  const era = $(`${p}-era`).value;
-  if (yy === null || mo === null || d === null ||
-      hh === null || mi === null || ss === null) return null;
-  try { return { y: eraToAstro(yy, era), mo, d, hh, mi, ss }; }
-  catch (e) { return null; }
-}
-
-// {y, mo, d} (astronomical y) from a group's hidden inputs, or null.
-function dateGroupValue(p) {
-  const num = id => {
-    const v = $(id).value.trim();
-    return /^\d+$/.test(v) ? parseInt(v, 10) : null;
-  };
-  const yy = num(`${p}-y`), mo = num(`${p}-mo`), d = num(`${p}-d`);
-  const era = $(`${p}-era`).value;
-  if (yy === null || mo === null || d === null) return null;
-  try { return { y: eraToAstro(yy, era), mo, d }; }
-  catch (e) { return null; }
-}
-
-const dtInputs = {}; // p -> attachDateTime api
-
-function refreshDTInput(p) {
-  const api = dtInputs[p];
-  if (api) api.refresh();
-}
-
-// Write the canonical hidden inputs, dispatching change on each field that
-// actually changed (drives deriveTimezone and the BCE LMT note).
-function setHiddenDateTime(p, v, seconds) {
-  const { yy, era } = astroToEra(v.y);
-  const vals = {
-    y: String(yy), era, mo: String(v.mo), d: String(v.d),
-    h: String(v.hh), mi: String(v.mi),
-  };
-  if (seconds) vals.s = String(v.ss);
-  for (const k of Object.keys(vals)) {
-    const el = $(`${p}-${k}`);
-    if (!el) continue;
-    if (el.value !== vals[k]) {
-      el.value = vals[k];
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-  }
-}
-
-// Commit a datetime from the unified input or the popup time steppers:
-// sanitize into the global range, then write through. For search ranges
-// (forward-only) an edit that would cross the paired endpoint is rejected
-// outright — like the popup's disabled days/era option, prevention beats
-// clamping to the boundary.
-function commitGroupDT(p, f, seconds) {
-  let v = { ...f };
-  v.y = Number.isFinite(v.y) ? Math.trunc(v.y) : new Date().getFullYear();
-  v.y = Math.max(BCE_MIN_ASTRO, Math.min(CE_MAX_YEAR, v.y));
-  v.mo = Number.isFinite(v.mo) ? Math.max(1, Math.min(12, Math.trunc(v.mo))) : 1;
-  v.hh = Number.isFinite(v.hh) ? Math.max(0, Math.min(23, Math.trunc(v.hh))) : 0;
-  v.mi = Number.isFinite(v.mi) ? Math.max(0, Math.min(59, Math.trunc(v.mi))) : 0;
-  v.ss = Number.isFinite(v.ss) ? Math.max(0, Math.min(59, Math.trunc(v.ss))) : 0;
-  v.d = Number.isFinite(v.d) ? Math.trunc(v.d) : 1;
-  v.d = Math.max(1, Math.min(v.d, daysInMonth(v.y, v.mo)));
-  if (v.y === 1582 && v.mo === 10 && v.d >= 5 && v.d <= 14) v.d = 4;
-  v = clampDT(v, dtFloor(), dtCeil());
-  const b = pickerDTBounds(p);
-  const crosses = (b.min && cmpDT(v, b.min) < 0) || (b.max && cmpDT(v, b.max) > 0);
-  if (crosses) {
-    const cur0 = groupValue(p, seconds);
-    const wasOk = cur0 &&
-      !(b.min && cmpDT(cur0, b.min) < 0) && !(b.max && cmpDT(cur0, b.max) > 0);
-    if (wasOk) return; // reject the edit; keep the current value
-    v = clampDT(v, b.min, b.max); // already invalid (programmatic): pull back in
-  }
-  setHiddenDateTime(p, v, seconds);
-}
-
-// Set a group's date (astronomical y), keeping its time-of-day, and notify
-// the change listeners that the old visible fields used to reach.
-function setGroupDate(p, y, mo, d) {
-  const seconds = !!$(`${p}-s`);
-  const cur = groupValue(p, seconds) || { hh: 0, mi: 0, ss: 0 };
-  setHiddenDateTime(p, { y, mo, d, hh: cur.hh, mi: cur.mi, ss: cur.ss }, seconds);
-  refreshDTInput(p);
-}
-
-const RANGE_PAIRS = [['asp-start', 'asp-end'], ['stn-start', 'stn-end'], ['ing-start', 'ing-end']];
-
-// Searches scan forward only: the start date never passes the end date.
-// When one side moves past the other, the other side's date follows
-// (its time-of-day is kept). The pickers additionally clamp navigation
-// to [start, end], so this is the backstop for programmatic changes.
-function enforceRangePair(changed) {
-  for (const [sp, ep] of RANGE_PAIRS) {
-    if (changed !== sp && changed !== ep) continue;
-    const s = dateGroupValue(sp), e = dateGroupValue(ep);
-    if (!s || !e || cmpDate(s, e) <= 0) continue;
-    const src = changed === sp ? s : e;
-    setGroupDate(changed === sp ? ep : sp, src.y, src.mo, src.d);
-  }
-}
-
-function pickerBounds(p) {
-  for (const [sp, ep] of RANGE_PAIRS) {
-    if (p === sp) return { min: null, max: dateGroupValue(ep) };
-    if (p === ep) return { min: dateGroupValue(sp), max: null };
-  }
-  return { min: null, max: null }; // main chart: the global floor/ceiling
-}
-
-// Full-datetime bounds for the unified input's capping: the edited side
-// can never cross the paired endpoint's instant.
-function pickerDTBounds(p) {
-  for (const [sp, ep] of RANGE_PAIRS) {
-    if (p === sp) return { min: null, max: groupValue(ep, false) };
-    if (p === ep) return { min: groupValue(sp, false), max: null };
-  }
-  return { min: null, max: null };
-}
-
-function openGroupPicker(p) {
-  const seconds = p === 'dt';
-  const g = groupValue(p, seconds);
-  const now = new Date();
-  const cur = g || {
-    y: now.getFullYear(), mo: now.getMonth() + 1, d: now.getDate(),
-    hh: 0, mi: 0, ss: 0,
-  };
-  const { min, max } = pickerBounds(p);
-  const t = { hh: cur.hh, mi: cur.mi, ss: cur.ss, seconds };
-  t.onTime = nt => {
-    const gg = groupValue(p, seconds) || cur;
-    commitGroupDT(p, { ...gg, hh: nt.hh, mi: nt.mi, ss: nt.ss }, seconds);
-    // The commit may have capped at the paired endpoint: write the
-    // committed values back so the steppers show the truth.
-    const back = groupValue(p, seconds) || gg;
-    t.hh = back.hh; t.mi = back.mi; t.ss = back.ss;
-    refreshDTInput(p);
-  };
-  openDatePicker($(`${p}-in`), {
-    value: { y: cur.y, mo: cur.mo, d: cur.d }, min, max,
-    time: t,
-    onPick: date => {
-      setGroupDate(p, date.y, date.mo, date.d);
-      enforceRangePair(p);
-    },
-  });
-}
-
-function initDateTimeInputs() {
-  for (const p of ['dt', 'asp-start', 'asp-end', 'stn-start', 'stn-end', 'ing-start', 'ing-end']) {
-    const input = $(`${p}-in`);
-    if (!input) continue;
-    const seconds = p === 'dt';
-    dtInputs[p] = attachDateTime(input, {
-      seconds,
-      get: () => groupValue(p, seconds),
-      set: (f, seg) => commitGroupDT(p, f, seconds),
-      openPicker: () => openGroupPicker(p),
-    });
-    $(`${p}-cal`).addEventListener('click', () => openGroupPicker(p));
-    refreshDTInput(p);
-  }
-}
-
 // Test seams for the E2E harness. __trigonSetDate keeps the date-only path
 // (hidden inputs + range follow) the popup uses; __trigonSetTime sets the
 // time fields; __trigonSetDateTime sets both with the input's cap semantics.
@@ -358,38 +135,38 @@ window.__trigonSetDate = (p, yy, era, mo, d) => {
   if (yy === '' || era === '' || mo === '' || d === '') {
     $(`${p}-y`).value = yy; $(`${p}-era`).value = era || 'ce';
     $(`${p}-mo`).value = mo; $(`${p}-d`).value = d;
-    refreshDTInput(p);
+    dtg.refreshDTInput(p);
     return;
   }
-  setGroupDate(p, eraToAstro(parseInt(yy, 10), era), parseInt(mo, 10), parseInt(d, 10));
-  enforceRangePair(p);
+  dtg.setGroupDate(p, eraToAstro(parseInt(yy, 10), era), parseInt(mo, 10), parseInt(d, 10));
+  dtg.enforceRangePair(p);
 };
 
 window.__trigonSetTime = (p, hh, mi, ss) => {
   const seconds = !!$(`${p}-s`);
-  const g = groupValue(p, seconds) ||
+  const g = dtg.groupValue(p, seconds) ||
     { y: new Date().getFullYear(), mo: 1, d: 1, hh: 0, mi: 0, ss: 0 };
-  setHiddenDateTime(p, {
+  dtg.setHiddenDateTime(p, {
     ...g,
     hh: Math.max(0, Math.min(23, hh | 0)),
     mi: Math.max(0, Math.min(59, mi | 0)),
     ss: seconds ? Math.max(0, Math.min(59, (ss == null ? 0 : ss) | 0)) : 0,
   }, seconds);
-  refreshDTInput(p);
+  dtg.refreshDTInput(p);
 };
 
 window.__trigonSetDateTime = (p, yy, era, mo, d, hh, mi, ss) => {
   const seconds = !!$(`${p}-s`);
-  commitGroupDT(p, {
+  dtg.commitGroupDT(p, {
     y: eraToAstro(parseInt(yy, 10), era),
     mo: parseInt(mo, 10), d: parseInt(d, 10),
     hh: parseInt(hh, 10), mi: parseInt(mi, 10),
     ss: seconds && ss != null ? parseInt(ss, 10) : 0,
   }, seconds);
-  refreshDTInput(p);
+  dtg.refreshDTInput(p);
 };
 
-window.__trigonRefresh = p => refreshDTInput(p);
+window.__trigonRefresh = p => dtg.dtg.refreshDTInput(p);
 
 function readInputs(utcMs = null) {
   const lat = parseFloat($('lat').value);
@@ -406,7 +183,7 @@ function readInputs(utcMs = null) {
     y = c.y; mo = c.mo; d = c.d; hourUT = c.hourUT;
     stampMs = utcMs;
   } else {
-    const f = readDateFields('dt', true);
+    const f = dtg.readDateFields('dt', true);
     y = f.y; mo = f.mo; d = f.d;
     const wallH = f.hh + f.mi / 60 + f.ss / 3600;
     if (y < 1) {
@@ -832,7 +609,7 @@ async function initShare(shares) {
     // as local mean time at the shared longitude.
     const c = calFromJd(share.utcMs / 86400000 + JD_UNIX_EPOCH + share.lon / 15 / 24);
     const s = Math.min(86399, Math.floor(c.hourUT * 3600 + 1e-3));
-    writeDateFields('dt', {
+    dtg.writeDateFields('dt', {
       y: c.y, mo: c.mo, d: c.d,
       hh: Math.floor(s / 3600), mi: Math.floor((s % 3600) / 60), ss: s % 60,
     }, true);
@@ -1111,11 +888,11 @@ function skipStep(dir) {
   if (clockApi.isRunning()) return;
   animApi.stop();
   let f;
-  try { f = readDateFields('dt', true); } catch (e) { $('error').textContent = e.message; return; }
+  try { f = dtg.readDateFields('dt', true); } catch (e) { $('error').textContent = e.message; return; }
   let n = Math.max(1, Math.floor(parseFloat($('skip-n').value) || 1));
   $('skip-n').value = n;
   const r = skipFields(f, dir, n, $('skip-unit').value);
-  writeDateFields('dt', r, true);
+  dtg.writeDateFields('dt', r, true);
   $('error').textContent = '';
   locUI.deriveTimezone(); // re-derive the offset if the skip crossed a DST boundary
   if (clockApi.hasLocation()) run(true, { skip: true });
@@ -1143,6 +920,14 @@ function setDrawerOpen(open, focus) {
 
 // ---------------------------------------------------------------------------
 // Module wiring: extracted concerns, composed here.
+// Date/time field groups (hidden inputs, unified text inputs, range
+// pairs, picker bounds) — created first; location/search/clock consume
+// its field codec.
+const dtg = createDateTimeGroups({
+  el: $,
+  openPicker: (input, opts) => openDatePicker(input, opts),
+  attach: (input, opts) => attachDateTime(input, opts),
+});
 // Chart point tooltips (display mechanics; data assembled by chartTipData).
 const chartTip = createChartTooltip({ panel: () => $('panel-chart'), tipData: chartTipData });
 // Outer wheels (biwheel/triwheel panels + animation target).
@@ -1171,10 +956,10 @@ const loader = createLoader({
 // Ephemeris (WASM + .se1 fetch/cache).
 const ephe = createEpheClient({ ui: { showLoader: loader.show, isArmed: loader.isArmed } });
 // Timezone / location UI.
-const locUI = createLocationUI({ el: $, log, storage: safeStorage, readDateFields });
+const locUI = createLocationUI({ el: $, log, storage: safeStorage, readDateFields: dtg.readDateFields });
 // Aspect + station search tabs.
 const searchUI = createSearchUI({
-  el: $, readDateFields, writeDateFields,
+  el: $, readDateFields: dtg.readDateFields, writeDateFields: dtg.writeDateFields,
   ensureWasm: (...a) => ephe.ensureWasm(...a),
   ensureSearchFiles: (...a) => ephe.ensureSearchFiles(...a),
   JD_1CE, getAngleFmt: () => angleFmt,
@@ -1183,7 +968,7 @@ const searchUI = createSearchUI({
 });
 // The astrological clock (live recompute every second).
 const clockApi = createClock({
-  el: $, readDateFields, writeDateFields,
+  el: $, readDateFields: dtg.readDateFields, writeDateFields: dtg.writeDateFields,
   updateTzForEra: (...a) => locUI.updateTzForEra(...a),
   deriveTimezone: (...a) => locUI.deriveTimezone(...a),
   run, getDerivedZone: (...a) => locUI.getDerivedZone(...a), setSkipEnabled,
@@ -1210,7 +995,7 @@ const animApi = createAnimation({
       clockApi.setDateTimeToInstantInZone(ms, zone);
     } else {
       const d = new Date(ms);
-      writeDateFields('dt', {
+      dtg.writeDateFields('dt', {
         y: d.getUTCFullYear(), mo: d.getUTCMonth() + 1, d: d.getUTCDate(),
         hh: d.getUTCHours(), mi: d.getUTCMinutes(), ss: d.getUTCSeconds(),
       }, true);
@@ -1249,7 +1034,7 @@ function gotoSearchInstant(jd) {
   let c = calFromJd(jd);
   if (c.y >= 1) {
     const s = Math.min(86399, Math.max(0, Math.floor(c.hourUT * 3600 + 1e-3)));
-    writeDateFields('dt', {
+    dtg.writeDateFields('dt', {
       y: c.y, mo: c.mo, d: c.d,
       hh: Math.floor(s / 3600), mi: Math.floor((s % 3600) / 60), ss: s % 60,
     }, true);
@@ -1261,7 +1046,7 @@ function gotoSearchInstant(jd) {
     const lon = parseFloat($('lon').value);
     if (Number.isFinite(lon)) c = calFromJd(jd + lon / 15 / 24);
     const s = Math.min(86399, Math.max(0, Math.floor(c.hourUT * 3600 + 1e-3)));
-    writeDateFields('dt', {
+    dtg.writeDateFields('dt', {
       y: c.y, mo: c.mo, d: c.d,
       hh: Math.floor(s / 3600), mi: Math.floor((s % 3600) / 60), ss: s % 60,
     }, true);
@@ -1307,7 +1092,7 @@ function init() {
   // The persistent 4-tab bar (table/chart/aspects/stations) lives in app.js.
   document.querySelectorAll('#views .tabs button').forEach(b =>
     b.addEventListener('click', () => setTab(b.dataset.tab)));
-  initDateTimeInputs();
+  dtg.initInputs();
   outerApi.init();
   chartTip.init();
   outerApi.renderPanels();
