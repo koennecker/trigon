@@ -29,6 +29,7 @@ import { createSearchUI } from './search-ui.js';
 import { loadSavedLocation, createLocationUI } from './location.js';
 import { skipFields } from './skip.js';
 import { createClock } from './clock.js';
+import { createLoader } from './loader.js';
 import { createAnimation } from './animation.js';
 import { nearestCity } from './cities.js';
 
@@ -689,82 +690,6 @@ async function ensureSky() {
   return skyLoadPromise;
 }
 
-// Loading animation: shown only while uncached data downloads (WASM engine
-// first load, ephemeris .se1 files). An SVG glyph that melts through the
-// twelve zodiac signs: at each transition a turbulence/displacement filter
-// peaks while the glyph blurs, scales and cross-swaps mid-morph.
-// Zodiac glyphs in order, colored by element like the chart wheel.
-const MORPH_GLYPHS = ['\u2648', '\u2649', '\u264A', '\u264B', '\u264C', '\u264D',
-                      '\u264E', '\u264F', '\u2650', '\u2651', '\u2652', '\u2653'];
-const MORPH_COLORS = ['#ff7b72', '#e3b341', '#79c0ff', '#a371f7']; // fire, earth, air, water
-const TVS2 = '\uFE0E'; // text presentation, matching the chart
-let loaderGen = 0, loaderRAF = 0, loaderArmed = false;
-
-function loaderHTML(label) {
-  return `<div class="loader" id="loader" role="status" aria-live="polite">`
-    + `<svg viewBox="0 0 120 120" width="110" height="110" aria-hidden="true">`
-    + `<defs><filter id="lmorph" x="-40%" y="-40%" width="180%" height="180%">`
-    + `<feTurbulence type="fractalNoise" baseFrequency="0.55" numOctaves="2" seed="7" result="n"/>`
-    + `<feDisplacementMap in="SourceGraphic" in2="n" scale="0" xChannelSelector="R" yChannelSelector="G"/>`
-    + `</filter></defs>`
-    + `<circle class="orbit" cx="60" cy="60" r="46" fill="none" stroke="#30363d" stroke-width="1.5" stroke-dasharray="4 10" stroke-linecap="round"/>`
-    + `<g filter="url(#lmorph)"><text id="lglyph" x="60" y="79" text-anchor="middle" font-size="52" fill="${MORPH_COLORS[0]}"`
-    + ` font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif">${MORPH_GLYPHS[0]}${TVS2}</text></g>`
-    + `</svg><div class="load-label" id="load-label">${label}</div></div>`;
-}
-
-function setGlyph(el, i) {
-  el.textContent = MORPH_GLYPHS[i] + TVS2;
-  el.setAttribute('fill', MORPH_COLORS[i % 4]);
-}
-
-function morphFrame(el, disp, s) {
-  disp.setAttribute('scale', (22 * s).toFixed(2));
-  el.style.filter = s > 0.01 ? `blur(${(6 * s).toFixed(2)}px)` : '';
-  el.style.opacity = (1 - 0.3 * s).toFixed(3);
-  el.style.transform = `scale(${(1 - 0.12 * s).toFixed(4)})`;
-}
-
-// One morph cycle per glyph: hold crisp, then melt into the next sign.
-function morphLoop(gen, idx) {
-  if (gen !== loaderGen) return;
-  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const HOLD = reduce ? 900 : 550, MORPH = reduce ? 0 : 450;
-  const t0 = performance.now();
-  let swapped = false;
-  const frame = now => {
-    if (gen !== loaderGen) return;
-    const el = document.getElementById('lglyph');
-    if (!el) return; // card was replaced; stop quietly
-    const t = now - t0;
-    if (MORPH > 0 && t >= HOLD) {
-      const q = Math.min(1, (t - HOLD) / MORPH);
-      if (!swapped && q >= 0.5) { swapped = true; setGlyph(el, (idx + 1) % 12); }
-      morphFrame(el, document.querySelector('#lmorph feDisplacementMap'), Math.sin(Math.PI * q));
-    }
-    if (t < HOLD + MORPH) loaderRAF = requestAnimationFrame(frame);
-    else morphLoop(gen, (idx + 1) % 12);
-  };
-  loaderRAF = requestAnimationFrame(frame);
-}
-
-function showLoader(label) {
-  if (document.getElementById('loader')) {
-    const lb = document.getElementById('load-label');
-    if (lb && label) lb.textContent = label;
-    return;
-  }
-  setTab('table'); // the download belongs to the chart calculation
-  const el = $('panel-table');
-  el.innerHTML = loaderHTML(label);
-  morphLoop(++loaderGen, 0);
-}
-
-function hideLoader() {
-  loaderGen++;
-  if (loaderRAF) { cancelAnimationFrame(loaderRAF); loaderRAF = 0; }
-}
-
 // Customize-chart panel: free-form numeric inputs generated from the
 // chart.js style descriptors (arbitrary sizes, no caps).
 // Any positive finite value is accepted; anything else reverts to the
@@ -1331,7 +1256,7 @@ async function run(useSwiss, opts = {}) {  const token = ++runToken; // overlapp
   lastOut = null;
   // The loader appears only while uncached data downloads (never on quiet
   // live ticks): fetchEphe/ensureWasm show it on a cache miss.
-  loaderArmed = !opts.live;
+  loader.arm(!opts.live);
   let inp;
   try {
     inp = readInputs(opts.utcMs ?? null);
@@ -1371,7 +1296,7 @@ async function run(useSwiss, opts = {}) {  const token = ++runToken; // overlapp
       outerOuts.push({ out: o, label: w.label, utcMs: w.utcMs });
     }
     if (token !== runToken) return; // superseded by a newer run
-    hideLoader(); // downloads done (or were cached and never shown)
+    loader.hide(); // downloads done (or were cached and never shown)
     lastInstantMs = inp.utcMs;
     lastInp = inp;
     // Live clock ticks and skip steps stamp the exact second; manual/auto
@@ -1397,7 +1322,7 @@ async function run(useSwiss, opts = {}) {  const token = ++runToken; // overlapp
     status('done');
   } catch (e) {
     if (token !== runToken) return; // superseded: the newer run owns the UI
-    hideLoader(); // don't leave the spinner on a failed download
+    loader.hide(); // don't leave the spinner on a failed download
     if (useSwiss && e.httpStatus === 404) {
       // BCE dates require the Swiss data files — Moshier's accuracy degrades
       // far from the present, so no fallback is offered for BCE.
@@ -1455,9 +1380,18 @@ function setDrawerOpen(open, focus) {
 
 // ---------------------------------------------------------------------------
 // Module wiring: extracted concerns, composed here.
-// Ephemeris (WASM + .se1 fetch/cache). isArmed is read lazily, so referencing
-// the loader section's `let loaderArmed` here is safe (only called post-init).
-const ephe = createEpheClient({ ui: { showLoader, isArmed: () => loaderArmed } });
+// Download loading animation (owns its armed flag and RAF state).
+const loader = createLoader({
+  mount: html => { $('panel-table').innerHTML = html; },
+  onShow: () => setTab('table'),
+  glyphEl: () => document.getElementById('lglyph'),
+  dispEl: () => document.querySelector('#lmorph feDisplacementMap'),
+  labelEl: () => document.getElementById('load-label'),
+  exists: () => !!document.getElementById('loader'),
+  reducedMotion: () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+});
+// Ephemeris (WASM + .se1 fetch/cache).
+const ephe = createEpheClient({ ui: { showLoader: loader.show, isArmed: loader.isArmed } });
 // Timezone / location UI.
 const locUI = createLocationUI({ el: $, log, storage: safeStorage, readDateFields });
 // Aspect + station search tabs.
@@ -1466,7 +1400,7 @@ const searchUI = createSearchUI({
   ensureWasm: (...a) => ephe.ensureWasm(...a),
   ensureSearchFiles: (...a) => ephe.ensureSearchFiles(...a),
   JD_1CE, getAngleFmt: () => angleFmt,
-  getLoaderArmed: () => loaderArmed, setLoaderArmed: v => { loaderArmed = v; },
+  getLoaderArmed: loader.isArmed, setLoaderArmed: v => loader.arm(v),
   animateRetrogradePeriod, gotoSearchInstant,
 });
 // The astrological clock (live recompute every second).

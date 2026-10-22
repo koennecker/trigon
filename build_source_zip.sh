@@ -21,7 +21,7 @@ cp "$ROOT/build.sh" "$PKG/build.sh"
 # build.sh from src_repo + swe_wrap.c), so it is deliberately excluded like
 # swe.wasm. The guard below fails the build if a new site/*.js module is not
 # listed here, so modules cannot silently fall out of the archive.
-SITE_LIST="app.js chart.js search.js dateapi.js datepicker.js datetime.js cities.js ephe-store.js format.js share.js table.js ephe.js search-ui.js location.js clock.js skip.js sky.js sky-data.js animation.js speed-stats.js lots.js lots-catalog.js dignities.js mag-stats.js search-worker.js"
+SITE_LIST="app.js chart.js search.js dateapi.js datepicker.js datetime.js cities.js ephe-store.js format.js share.js table.js ephe.js search-ui.js location.js clock.js skip.js sky.js sky-data.js animation.js speed-stats.js lots.js lots-catalog.js dignities.js mag-stats.js search-worker.js loader.js"
 for f in $SITE_LIST index.html logo.svg; do
   cp "$SITE/$f" "$PKG/site-src/$f"
 done
