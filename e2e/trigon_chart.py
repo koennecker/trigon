@@ -56,32 +56,55 @@ try:
 
         svg = page.inner_html("#panel-chart svg")
         # Spoke layout: 16 single radial labels ([glyph] [deg]° [sign] [min]′).
-        n_spokes = len(re.findall(r'<text[^>]*font-size="9\.5"', svg))
+        n_spokes = len(re.findall(r'<g class="chart-point" data-point=', svg))
         check("16 spoke labels (10 planets + 4 angles + 2 nodes)",
               n_spokes == 16, f"n_spokes={n_spokes}")
         # Radial labels: tokens positioned via tspan x/y (no writing-mode,
         # no rotation). Verify tspans exist and are upright (no transform).
         orient = page.evaluate("""() => {
           const s = document.querySelector('#panel-chart svg');
-          const radial = [...s.querySelectorAll('text[font-size="9.5"]')]
-            .filter(t => t.querySelector('tspan[x]'));
-          const bad = radial.filter(t =>
-            [...t.querySelectorAll('tspan')].some(ts =>
-              ts.getAttribute('transform') || (ts.getAttribute('style')||'').includes('rotate')));
-          return { n_radial: radial.length, n_bad: bad.length };
+          const groups = [...s.querySelectorAll('g.chart-point')];
+          const bad = groups.filter(g =>
+            g.querySelector('[transform*="rotate"], [style*="rotate"]'));
+          return { n_radial: groups.length, n_bad: bad.length };
         }""")
-        check("radial labels use positioned tspans (no rotation, chars upright)",
-              orient["n_radial"] > 0 and orient["n_bad"] == 0,
+        check("radial labels use positioned parts (no rotation, chars upright)",
+              orient["n_radial"] == 16 and orient["n_bad"] == 0,
               f"n_radial={orient['n_radial']} n_bad={orient['n_bad']}")
-        check("12 sign glyphs", svg.count("♈") + svg.count("♉") >= 2
-              and len(re.findall(r'<text[^>]*font-size="19"', svg)) == 12)
+        # Vector-glyph identity: fetch the glyph path data and count how
+        # often each glyph's path appears in the rendered chart; band
+        # glyphs are the .svg-glyph groups at the sign-band radius.
+        glyph_counts = page.evaluate("""async () => {
+          const t = await (await fetch('/glyphs.js')).text();
+          const block = (name) => t.split(name)[1].split(';')[0];
+          const bodies = {};
+          for (const m of block('BODY_PATHS').matchAll(/'([a-z-]+)': '([^']+)'/g))
+            bodies[m[1]] = m[2];
+          const html = document.querySelector('#panel-chart svg').innerHTML;
+          const count = (d) => html.split(d).length - 1;
+          const band = [...document.querySelectorAll('#panel-chart svg .svg-glyph')]
+            .filter(g => {
+              const m = /translate\\(([\\d.\\-]+) ([\\d.\\-]+)\\)/.exec(g.getAttribute('transform'));
+              const r = Math.hypot(+m[1] - 350, +m[2] - 350);
+              return r > 265 && r < 292;
+            }).length;
+          return { bodies: Object.fromEntries(
+                     Object.entries(bodies).map(([k, d]) => [k, count(d)])),
+                   band };
+        }""")
+        check("12 sign glyphs", glyph_counts["band"] == 12,
+              f"band glyphs={glyph_counts['band']}")
         check("angle labels As/Mc/Ds/Ic, each exactly once",
               all(len(re.findall(r'>%s<' % g, svg)) == 1 for g in ("As", "Mc", "Ds", "Ic")),
               "each angle glyph appears once in its radial label")
         check("each planet glyph appears exactly once (no duplication)",
-              all(svg.count(g) == 1 for g in "☉☽☿♀♂♃♄♅♆♇"),
-              "single-glyph rule: wheel glyph XOR list row, never both")
-        check("node glyphs appear exactly once", svg.count("☊") == 1 and svg.count("☋") == 1)
+              all(glyph_counts["bodies"][k] == 1 for k in
+                  ("sun", "moon", "mercury", "venus", "mars", "jupiter",
+                   "saturn", "uranus", "neptune", "pluto")),
+              "single-glyph rule: one rendered glyph per point")
+        check("node glyphs appear exactly once",
+              glyph_counts["bodies"]["true-node"] == 1
+              and glyph_counts["bodies"]["south-node"] == 1)
         check("360 degree ticks",
               len(re.findall(r'<line[^>]*stroke="#6e7681"', svg)) - 1 == 360,
               "tick lines (minus the Asc-Dsc axis)")
@@ -99,27 +122,28 @@ try:
         def clashes():
             rects = page.evaluate("""() => {
               const svg = document.querySelector('#panel-chart svg');
-              // Only point labels (font-size 9.5), not sign glyphs (19) or ticks.
-              // Radial labels: check each positioned tspan individually (they're
-              // spread along the spoke). Horizontal: whole text as one rect.
+              // Token rects of every point label: vector-glyph paths and
+              // text tokens inside each chart-point group, mapped to SVG
+              // root coordinates via getBBox + getCTM. Inset by 2px to
+              // approximate ink.
               const out = [];
-              for (const t of svg.querySelectorAll('text[font-size="9.5"]')) {
-                const tspans = [...t.querySelectorAll('tspan[x]')];
-                if (tspans.length) {
-                  for (const ts of tspans) {
-                    const b = ts.getBBox();
-                    out.push([b.x + b.width/2, b.y + b.height/2,
-                              Math.max(8, b.width - 4), Math.max(8, b.height - 4),
-                              0, ts.textContent]);
-                  }
-                } else {
-                  const b = t.getBBox();
-                  const fs = parseFloat(t.getAttribute('font-size') || '12');
-                  const h = fs * 1.2;
-                  out.push([b.x + b.width/2, b.y + b.height/2,
-                            Math.max(8, Math.min(b.width - 4, 250)), h - 4,
-                            0, t.textContent]);
-                }
+              const rectOf = (el, label, inset, floor) => {
+                const b = el.getBBox(), m = el.getCTM();
+                if (!m) return;
+                const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
+                const sx = Math.hypot(m.a, m.b), sy = Math.hypot(m.c, m.d);
+                out.push([m.a * cx + m.c * cy + m.e, m.b * cx + m.d * cy + m.f,
+                          Math.max(floor, b.width * sx - inset),
+                          Math.max(floor, b.height * sy - inset),
+                          0, label]);
+              };
+              for (const g of svg.querySelectorAll('g.chart-point')) {
+                // Glyph paths: getBBox is tight ink already, no inset.
+                for (const p of g.querySelectorAll('.svg-glyph path'))
+                  rectOf(p, 'glyph', 0, 2);
+                // Text tokens: bbox carries side bearings, inset by 2px.
+                for (const t of g.querySelectorAll('text'))
+                  rectOf(t, t.textContent, 4, 4);
               }
               return out;
             }""")
@@ -150,7 +174,8 @@ try:
         c0 = clashes()
         check("no overlapping text on the wheel", not c0,
               f"{len(c0)} overlaps" + (f" e.g. {c0[0]}" if c0 else ""))
-        check("outer + divider + inner circles", svg.count("<circle") == 3)
+        check("outer + divider + inner circles",
+              len(re.findall(r'<circle cx="350" cy="350"', svg)) == 3)
 
         # stellium stress: 2021-02-11 packs six bodies into Aquarius
         page.click('.tabs button[data-tab="table"]')
@@ -160,12 +185,18 @@ try:
         page.click('.tabs button[data-tab="chart"]')
         page.wait_for_timeout(400)
         svg_st = page.inner_html("#panel-chart svg")
-        n_spokes_st = len(re.findall(r'<text[^>]*font-size="9\.5"', svg_st))
+        n_spokes_st = len(re.findall(r'<g class="chart-point" data-point=', svg_st))
         check("stellium: 16 spoke labels", n_spokes_st == 16,
               f"n_spokes={n_spokes_st}")
         # Spokes are radial by design.
-        check("stellium: no duplicated glyphs",
-              all(svg_st.count(g) == 1 for g in "☉☽☿♀♂♃♄♅♆♇☊☋"))
+        dup = page.evaluate("""async () => {
+          const t = await (await fetch('/glyphs.js')).text();
+          const block = t.split('BODY_PATHS')[1].split(';')[0];
+          const html = document.querySelector('#panel-chart svg').innerHTML;
+          return [...block.matchAll(/'([a-z-]+)': '([^']+)'/g)]
+            .every(m => html.split(m[2]).length - 1 === 1);
+        }""")
+        check("stellium: no duplicated glyphs", dup)
         n_leaders = svg_st.count('stroke="#484f58"')
         check("stellium: leaders only for displaced", 0 <= n_leaders <= 16,
               f"n_leaders={n_leaders}")
@@ -203,14 +234,26 @@ try:
         # chart viewBox is 700x700, center (350, 350)
         def screen_angle(x, y):
             return math.degrees(math.atan2(-(y-350), x-350)) % 360
-        def glyph_xy(g):
-            # Glyphs live inside radial labels; the glyph tspan (font-size=12)
-            # carries the x/y. Find the tspan containing the glyph.
-            return page.evaluate("""(g) => {
-              const ts = [...document.querySelectorAll('#panel-chart svg tspan[font-size="12"]')]
-                .find(e => e.textContent.includes(g));
-              return ts ? {x: +ts.getAttribute('x'), y: +ts.getAttribute('y')} : null;
-            }""", g)
+        def glyph_xy(key):
+            # Angle labels are text elements; point glyphs are vector
+            # groups whose path data identifies the point (see glyphs.js).
+            return page.evaluate("""async (key) => {
+              const s = document.querySelector('#panel-chart svg');
+              if (key === 'As') {
+                const t = [...s.querySelectorAll('text')]
+                  .find(e => e.textContent === 'As');
+                return t ? {x: +t.getAttribute('x'), y: +t.getAttribute('y')} : null;
+              }
+              const src = await (await fetch('/glyphs.js')).text();
+              const block = src.split('BODY_PATHS')[1].split(';')[0];
+              const m = new RegExp(`'${key}': '([^']+)'`).exec(block);
+              if (!m) return null;
+              const g = [...s.querySelectorAll('.svg-glyph')]
+                .find(e => e.querySelector('path').getAttribute('d') === m[1]);
+              if (!g) return null;
+              const tr = /translate\\(([\\d.\\-]+) ([\\d.\\-]+)\\)/.exec(g.getAttribute('transform'));
+              return {x: +tr[1], y: +tr[2]};
+            }""", key)
         def ang_diff(a, b):
             return abs((a - b + 180) % 360 - 180)
         as_xy = glyph_xy("As")
@@ -227,7 +270,9 @@ try:
             txt = page.text_content(f"#panel-table tbody tr:nth-child({i+1}) td.num")
             planet_lons.append(SIGNS.index(next(s for s in SIGNS if s in txt))*30 + dms(txt))
         checked = False
-        for g, lon in zip("☉☽☿♀♂♃♄♅♆♇", planet_lons):
+        PLANET_KEYS = ["sun", "moon", "mercury", "venus", "mars", "jupiter",
+                       "saturn", "uranus", "neptune", "pluto"]
+        for g, lon in zip(PLANET_KEYS, planet_lons):
             xy = glyph_xy(g)
             if xy is None:
                 continue
@@ -263,7 +308,7 @@ try:
         page.wait_for_timeout(300)
         svg_dec = page.inner_html("#panel-chart svg")
         check("chart labels follow decimal toggle",
-              re.search(r'<tspan[^>]*>\d+\.\d{2}°</tspan>', svg_dec) is not None,
+              re.search(r'<text[^>]*>\d+\.\d{2}°</text>', svg_dec) is not None,
               "radial labels show decimal degrees")
 
         # tab selection sticks across recalculation

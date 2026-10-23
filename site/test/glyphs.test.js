@@ -2,12 +2,13 @@
 // with no DOM — glyphs.js is pure string building over path data.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { SIGN_PATHS, BODY_PATHS, GLYPH_STROKE_BASE,
+import { SIGN_PATHS, BODY_PATHS,
          glyphSVG, signGlyphSVG, bodyGlyphSVG } from '../glyphs.js';
 
 const BODY_KEYS = ['sun', 'moon', 'mercury', 'venus', 'mars', 'jupiter',
                    'saturn', 'uranus', 'neptune', 'pluto',
                    'true-node', 'south-node'];
+const ALL_PATHS = [...SIGN_PATHS, ...Object.values(BODY_PATHS)];
 
 describe('glyph path data', () => {
   it('covers 12 signs and all 12 point keys', () => {
@@ -15,47 +16,40 @@ describe('glyph path data', () => {
     assert.deepEqual(Object.keys(BODY_PATHS).sort(), [...BODY_KEYS].sort());
   });
 
-  it('every glyph has at least one stroke or fill path', () => {
-    for (const e of [...SIGN_PATHS, ...Object.values(BODY_PATHS)])
-      assert.ok(e.s.length + e.f.length > 0);
+  it('every glyph is a non-trivial closed outline', () => {
+    for (const d of ALL_PATHS) {
+      assert.ok(typeof d === 'string' && d.length > 100, 'path too short');
+      assert.ok(d.startsWith('M'), 'starts with a moveto');
+      assert.ok(d.includes('Z'), 'has a closed subpath');
+    }
   });
 
-  it('all path coordinates stay inside the 0..100 grid (with margin)', () => {
-    // Walk each path: absolute coordinates (M/L/H/V/C/A endpoints and
-    // control points) must land in [-1, 101]; relative arc deltas and
-    // radii are sizes, bounded by the grid diagonal instead.
-    const inGrid = (v, d) => assert.ok(v >= -1 && v <= 101, `coordinate ${v} in "${d}"`);
-    for (const e of [...SIGN_PATHS, ...Object.values(BODY_PATHS)]) {
-      for (const d of [...e.s, ...e.f]) {
-        const toks = d.match(/[MLHVCZAa]|-?\d+(?:\.\d+)?/g) || [];
-        let cmd = '', i = 0;
-        const num = () => parseFloat(toks[i++]);
-        while (i < toks.length) {
-          if (/^[MLHVCZAa]$/.test(toks[i])) cmd = toks[i++];
-          if (cmd === 'M' || cmd === 'L') { inGrid(num(), d); inGrid(num(), d); cmd = 'L'; }
-          else if (cmd === 'H') inGrid(num(), d);
-          else if (cmd === 'V') inGrid(num(), d);
-          else if (cmd === 'C') { for (let k = 0; k < 6; k++) inGrid(num(), d); }
-          else if (cmd === 'A') {
-            const rx = num(), ry = num(); num(); num(); num();
-            assert.ok(rx <= 100 && ry <= 100, `arc radius in "${d}"`);
-            inGrid(num(), d); inGrid(num(), d);
-          } else if (cmd === 'a') {
-            const rx = num(), ry = num(); num(); num(); num();
-            const dx = num(), dy = num();
-            assert.ok(rx <= 100 && ry <= 100 && Math.abs(dx) <= 100 && Math.abs(dy) <= 100,
-              `relative arc in "${d}"`);
-          } else if (cmd === 'Z') { /* no params */ }
-          else assert.fail(`unhandled command "${cmd}" in "${d}"`);
-        }
+  it('all path coordinates stay inside the 0..100 grid', () => {
+    // Walk each path: every parameter of M/L/C/Q is an absolute
+    // coordinate and must land in [0, 100] (the generator's fit margin
+    // keeps ink inside 3..97).
+    for (const d of ALL_PATHS) {
+      const toks = d.match(/[MLCQZHV]|-?\d+(?:\.\d+)?/g) || [];
+      let cmd = '', i = 0;
+      const num = () => {
+        const v = parseFloat(toks[i++]);
+        assert.ok(v >= -0.1 && v <= 100.1, `coordinate ${v} in "${d.slice(0, 40)}..."`);
+      };
+      while (i < toks.length) {
+        if (/^[MLCQZHV]$/.test(toks[i])) cmd = toks[i++];
+        if (cmd === 'M' || cmd === 'L') { num(); num(); cmd = 'L'; }
+        else if (cmd === 'H' || cmd === 'V') { num(); }
+        else if (cmd === 'C') { for (let k = 0; k < 6; k++) num(); }
+        else if (cmd === 'Q') { for (let k = 0; k < 4; k++) num(); }
+        else if (cmd === 'Z') { /* no params */ }
+        else assert.fail(`unhandled command "${cmd}"`);
       }
     }
   });
 
   it('path data uses only the expected command set', () => {
-    for (const e of [...SIGN_PATHS, ...Object.values(BODY_PATHS)])
-      for (const d of [...e.s, ...e.f])
-        assert.ok(/^[MLHVC AZa\d\s.,-]+$/.test(d), `unexpected command in "${d}"`);
+    for (const d of ALL_PATHS)
+      assert.ok(/^[MLCQZHV\d\s.,-]+$/.test(d), `unexpected command in "${d.slice(0, 40)}"`);
   });
 });
 
@@ -64,37 +58,26 @@ describe('glyphSVG rendering', () => {
     const s = glyphSVG(SIGN_PATHS[0], 350, 200, 19, '#ff7b72');
     assert.ok(s.includes('translate(350.0 200.0) scale(0.1900) translate(-50 -50)'));
     assert.ok(s.includes('class="svg-glyph"'));
+    assert.ok(s.includes(`d="${SIGN_PATHS[0]}"`));
   });
 
-  it('stroke width defaults to the base and follows opts', () => {
-    assert.ok(glyphSVG(SIGN_PATHS[0], 0, 0, 20, '#fff')
-      .includes(`stroke-width="${GLYPH_STROKE_BASE}"`));
-    assert.ok(glyphSVG(SIGN_PATHS[0], 0, 0, 20, '#fff', { strokeW: 12.25 })
-      .includes('stroke-width="12.25"'));
+  it('fills with the glyph color at full opacity by default, no outline', () => {
+    const s = glyphSVG(SIGN_PATHS[0], 0, 0, 20, '#fff');
+    assert.ok(s.includes('fill="#fff" fill-opacity="1"'));
+    assert.ok(!s.includes('stroke='), 'no outline by default');
   });
 
-  it('strokeW 0 omits the stroke path but keeps fills', () => {
-    const sun = glyphSVG(BODY_PATHS.sun, 0, 0, 20, '#fff', { strokeW: 0 });
-    assert.ok(!sun.includes('fill="none"'), 'no stroke path');
-    assert.ok(sun.includes('fill="#fff"'), 'center dot fill kept');
-  });
-
-  it('opacities land on the stroke and fill paths', () => {
-    const s = glyphSVG(BODY_PATHS.sun, 0, 0, 20, '#fff', { strokeO: 0.5, fillO: 0.25 });
-    assert.ok(s.includes('opacity="0.5"'));
-    assert.ok(s.includes('opacity="0.25"'));
-  });
-
-  it('the Moon is fill-only (a crescent, no stroke path)', () => {
-    const s = bodyGlyphSVG('moon', 0, 0, 20, '#fff');
-    assert.ok(!s.includes('fill="none"'));
-    assert.ok(s.includes('fill="#fff"'));
+  it('outlineW adds a same-color outline; opacities land on the path', () => {
+    const s = glyphSVG(BODY_PATHS.sun, 0, 0, 20, '#fff',
+                       { outlineW: 2.5, outlineO: 0.5, fillO: 0.25 });
+    assert.ok(s.includes('stroke="#fff" stroke-width="2.5" stroke-opacity="0.5"'));
+    assert.ok(s.includes('fill-opacity="0.25"'));
   });
 
   it('signGlyphSVG indexes the zodiac in order; unknown body keys render empty', () => {
     for (let i = 0; i < 12; i++)
-      assert.ok(signGlyphSVG(i, 0, 0, 10, '#fff').includes(SIGN_PATHS[i].s[0].split(' ')[0]) ||
-                signGlyphSVG(i, 0, 0, 10, '#fff').length > 0);
+      assert.ok(signGlyphSVG(i, 0, 0, 10, '#fff').includes(`d="${SIGN_PATHS[i]}"`));
+    assert.ok(bodyGlyphSVG('pluto', 0, 0, 10, '#fff').includes(`d="${BODY_PATHS.pluto}"`));
     assert.equal(bodyGlyphSVG('ceres', 0, 0, 10, '#fff'), '');
   });
 });

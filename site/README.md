@@ -147,6 +147,14 @@ up the same way.
   panel events, element lifecycle, edge-aware positioning. The data
   comes from `table.js` `pointTooltip`, assembled by `app.js` (station
   values read back from the table cells at hover time).
+- `glyphs.js` — vector glyphs for the 12 signs and 12 points (planets
+  + nodes): standard-form outlines on a 0..100 grid, rendered as SVG
+  fills with an optional same-color outline. Consumed by `chart.js`
+  (sign band, spoke labels, outer wheels, mobile wheel); styled by the
+  Glyphs section of `CHART_STYLE_SECTIONS` plus the per-context weight
+  params, which add outline width. The path data block is generated —
+  rebuild with `data/build_glyphs.py`, never hand-edit it. Aspect
+  glyphs and the table/sky views still use font text.
 - `format.js` — pure display formatting: angles (`dms`/`compact`/`dec`
   via `effFmt()`), `fmtSpeedDR` (D/R suffix), `fmtLon`, `fmtDec`,
   `gotoButtonHTML`, `rowsToCSV`, planet/sign colors

@@ -17,6 +17,14 @@
 - **Size**: ~7.3 MB raw, ~2.95 MB gzipped. Fetch once, cache in Cache API.
 - **Attribution (required in app)**: "City data © GeoNames (CC-BY)".
 
+# Chart glyph data
+
+`build_glyphs.py` — regenerates the vector glyph outlines in
+`site/glyphs.js` (the marked generated block) from the DejaVu Sans
+font outlines: `python3 build_glyphs.py [path-to-DejaVuSans.ttf]`.
+Each glyph's bounding box is fitted onto the 0..100 grid the renderer
+uses, aspect preserved. Run it only when the glyph set itself changes.
+
 ## Search spec (verified in Python, port to JS)
 
 1. Normalize: lowercase + strip diacritics (NFD), for query and all keys.

@@ -215,7 +215,7 @@ describe('chart style', () => {
     assert.deepEqual(d.mobile,
       { rOut: 165, rSign: 150, rAsp: 85, rGlyph: 218, glyphSize: 32, signSize: 16 });
     assert.deepEqual(d.shared, { aspWidth: 1, sepScale: 1 });
-    assert.deepEqual(d.glyphs, { strokeW: 7, strokeOpacity: 1, fillOpacity: 1 });
+    assert.deepEqual(d.glyphs, { outlineW: 0, outlineOpacity: 1, fillOpacity: 1 });
     assert.deepEqual(d.outer,
       { ringGap: 35, bandWidth: 30, ringStep: 20, glyphSize: 13, labelSize: 11, tickLen: 8 });
   });

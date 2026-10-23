@@ -40,7 +40,7 @@ for t in "$SITE"/test/*.test.js "$SITE/test/data/README"; do
 done
 cp "$SITE/vendor/tz.min.js" "$PKG/vendor/tz.min.js"
 cp "$SITE/vendor/three.module.min.js" "$PKG/vendor/three.module.min.js"
-cp "$ROOT/data/build_cities.py" "$ROOT/data/README.md" "$PKG/data/"
+cp "$ROOT/data/build_cities.py" "$ROOT/data/build_glyphs.py" "$ROOT/data/README.md" "$PKG/data/"
 
 # Sanity: every site-src file must be byte-identical to the served file.
 for f in "$PKG"/site-src/*; do

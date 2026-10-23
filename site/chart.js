@@ -59,16 +59,16 @@ export const CHART_STYLE_SECTIONS = [
     { key: 'rAsp',  label: 'Aspect circle radius', min: 50,  max: 150, step: 1,   def: 100 },
     { key: 'signSize',     label: 'Sign glyph size',   min: 12, max: 28, step: 0.5, def: 19 },
     { key: 'signWeight',   label: 'Sign glyph weight', min: 400, max: 900, step: 100, def: 400,
-      hint: 'Scales the vector glyph stroke width on the zodiac band; 400 = standard, 700 = bold.' },
+      hint: 'Adds outline width to the band glyphs; 400 = plain, 900 = heaviest.' },
     { key: 'lblGlyphSize', label: 'Label point-glyph size',  min: 8, max: 18, step: 0.5, def: 12 },
     { key: 'lblGlyphWeight', label: 'Label point-glyph weight', min: 400, max: 900, step: 100, def: 400,
-      hint: 'Scales the vector glyph stroke width; 400 = standard.' },
+      hint: 'Adds outline width to the glyph; 400 = plain, 900 = heaviest.' },
     { key: 'lblTextSize',  label: 'Label degree size', min: 7,  max: 14, step: 0.5, def: 9.5 },
     { key: 'lblTextWeight', label: 'Label degree weight', min: 400, max: 900, step: 100, def: 400 },
     { key: 'lblSignSize', label: 'Label sign-glyph size', min: 8, max: 18, step: 0.5, def: 12,
       hint: 'Zodiac glyph inside the label (separate from the wheel band).' },
     { key: 'lblSignWeight', label: 'Label sign-glyph weight', min: 400, max: 900, step: 100, def: 400,
-      hint: 'Scales the vector glyph stroke width; 400 = standard.' },
+      hint: 'Adds outline width to the glyph; 400 = plain, 900 = heaviest.' },
     { key: 'lblPitch', label: 'Label token spacing', min: 0.5, max: 1.5, step: 0.05, def: 1,
       hint: 'Multiplier on the radial gap between label parts (glyph, degree, sign, minutes).' },
     { key: 'aspGlyphSize', label: 'Aspect glyph size', min: 8,  max: 18, step: 0.5, def: 12 },
@@ -94,14 +94,13 @@ export const CHART_STYLE_SECTIONS = [
       hint: 'Length of the tick marks on the root wheel for outer planets.' },
   ] },
   { id: 'glyphs', title: 'Glyphs (vector)', params: [
-    { key: 'strokeW', label: 'Stroke width', min: 0, max: 14, step: 0.5, def: 7,
+    { key: 'outlineW', label: 'Outline width', min: 0, max: 6, step: 0.25, def: 0,
       allowZero: true,
-      hint: 'Stroke width of the vector sign/point glyphs, in glyph units (7 = standard). The weight controls scale it.' },
-    { key: 'strokeOpacity', label: 'Stroke opacity', min: 0, max: 1, step: 0.05, def: 1,
+      hint: 'Extra outline drawn around the glyph fills, in glyph units. The weight controls add to it.' },
+    { key: 'outlineOpacity', label: 'Outline opacity', min: 0, max: 1, step: 0.05, def: 1,
       allowZero: true },
     { key: 'fillOpacity', label: 'Fill opacity', min: 0, max: 1, step: 0.05, def: 1,
-      allowZero: true,
-      hint: 'Opacity of solid glyph parts (Sun center, Moon crescent, node knobs).' },
+      allowZero: true },
   ] },
   { id: 'shared', title: 'Shared', params: [
     { key: 'aspWidth', label: 'Aspect line thickness', min: 0.3, max: 2.5, step: 0.05, def: 1 },
@@ -349,9 +348,11 @@ function degLabel(lon, angleFmt) {
 }
 
 // Vector-glyph render options from the 'glyphs' style section; a weight
-// parameter (400..900) scales the base stroke width linearly.
+// parameter (400..900) adds outline width (0 at 400, +5 at 900) on top of
+// the section's base outline width.
 function glyphOpts(gst, weight) {
-  return { strokeW: gst.strokeW * (weight || 400) / 400, strokeO: gst.strokeOpacity, fillO: gst.fillOpacity };
+  const ow = Math.max(0, gst.outlineW + ((weight || 400) - 400) / 100);
+  return { outlineW: ow, outlineO: gst.outlineOpacity, fillO: gst.fillOpacity };
 }
 
 function text(x, y, s, size, fill, extra = '', weight = 0) {
@@ -587,7 +588,7 @@ export function renderChartSVG(out, opts = {}) {
           : bodyGlyphSVG(t.svgKey, tx, ty, size, t.color, glyphOpts(_sty.glyphs, weight));
         if (t.retro) {
           // Retrograde marker beside the glyph, offset tangentially.
-          const rx = tx - uy * size * 0.8, ry = ty + ux * size * 0.8;
+          const rx = tx - uy * size * 0.95, ry = ty + ux * size * 0.95;
           g += text(rx, ry, 'R', st.lblTextSize, t.color, '', st.lblGlyphWeight);
         }
         return g;
