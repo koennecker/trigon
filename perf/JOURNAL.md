@@ -107,3 +107,6 @@ environments expose no true GPU-utilization counter.
 | 20261023-134134 | table-glyphs | table-clock | 1.8 | 3.0 | 1.1 | 4.2 | 4.9 | 937 | 1.0 | 0 | 20.0 |
 | 20261023-134134 | table-glyphs | sky-clock | 3.1 | 3.5 | 3.3 | 7.0 | 8.3 | 1075 | 1.0 | 0 | 20.0 |
 | 20261023-134134 | table-glyphs | sky-static | 1.0 | 2.1 | 0.8 | 3.1 | 7.5 | 1076 | 0.0 | 0 | 20.0 |
+| 20261023-162935 | settings-modal | table-clock | 1.8 | 3.0 | 1.1 | 4.4 | 5.2 | 943 | 1.0 | 0 | 20.0 |
+| 20261023-162935 | settings-modal | sky-clock | 2.6 | 3.0 | 2.9 | 6.2 | 8.3 | 1073 | 1.0 | 0 | 20.0 |
+| 20261023-162935 | settings-modal | sky-static | 0.9 | 1.8 | 0.7 | 2.8 | 7.6 | 1069 | 0.0 | 0 | 20.0 |
