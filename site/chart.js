@@ -34,6 +34,8 @@
 // glyphs don't sit on the sign-divider lines; labels and aspect orbs use the
 // actual longitude.
 
+import { signGlyphSVG, bodyGlyphSVG } from './glyphs.js';
+
 const CX = 350, CY = 350;
 const VB = 700; // viewBox size (square, center CX,CY)
 
@@ -57,14 +59,16 @@ export const CHART_STYLE_SECTIONS = [
     { key: 'rAsp',  label: 'Aspect circle radius', min: 50,  max: 150, step: 1,   def: 100 },
     { key: 'signSize',     label: 'Sign glyph size',   min: 12, max: 28, step: 0.5, def: 19 },
     { key: 'signWeight',   label: 'Sign glyph weight', min: 400, max: 900, step: 100, def: 400,
-      hint: 'font-weight for the zodiac band glyphs; 400 normal, 700 bold.' },
+      hint: 'Scales the vector glyph stroke width on the zodiac band; 400 = standard, 700 = bold.' },
     { key: 'lblGlyphSize', label: 'Label point-glyph size',  min: 8, max: 18, step: 0.5, def: 12 },
-    { key: 'lblGlyphWeight', label: 'Label point-glyph weight', min: 400, max: 900, step: 100, def: 400 },
+    { key: 'lblGlyphWeight', label: 'Label point-glyph weight', min: 400, max: 900, step: 100, def: 400,
+      hint: 'Scales the vector glyph stroke width; 400 = standard.' },
     { key: 'lblTextSize',  label: 'Label degree size', min: 7,  max: 14, step: 0.5, def: 9.5 },
     { key: 'lblTextWeight', label: 'Label degree weight', min: 400, max: 900, step: 100, def: 400 },
     { key: 'lblSignSize', label: 'Label sign-glyph size', min: 8, max: 18, step: 0.5, def: 12,
       hint: 'Zodiac glyph inside the label (separate from the wheel band).' },
-    { key: 'lblSignWeight', label: 'Label sign-glyph weight', min: 400, max: 900, step: 100, def: 400 },
+    { key: 'lblSignWeight', label: 'Label sign-glyph weight', min: 400, max: 900, step: 100, def: 400,
+      hint: 'Scales the vector glyph stroke width; 400 = standard.' },
     { key: 'lblPitch', label: 'Label token spacing', min: 0.5, max: 1.5, step: 0.05, def: 1,
       hint: 'Multiplier on the radial gap between label parts (glyph, degree, sign, minutes).' },
     { key: 'aspGlyphSize', label: 'Aspect glyph size', min: 8,  max: 18, step: 0.5, def: 12 },
@@ -88,6 +92,16 @@ export const CHART_STYLE_SECTIONS = [
     { key: 'labelSize',   label: 'Wheel label size',    min: 8,  max: 18,  step: 0.5, def: 11 },
     { key: 'tickLen',     label: 'Tick length',         min: 2,  max: 16,  step: 1,   def: 8,
       hint: 'Length of the tick marks on the root wheel for outer planets.' },
+  ] },
+  { id: 'glyphs', title: 'Glyphs (vector)', params: [
+    { key: 'strokeW', label: 'Stroke width', min: 0, max: 14, step: 0.5, def: 7,
+      allowZero: true,
+      hint: 'Stroke width of the vector sign/point glyphs, in glyph units (7 = standard). The weight controls scale it.' },
+    { key: 'strokeOpacity', label: 'Stroke opacity', min: 0, max: 1, step: 0.05, def: 1,
+      allowZero: true },
+    { key: 'fillOpacity', label: 'Fill opacity', min: 0, max: 1, step: 0.05, def: 1,
+      allowZero: true,
+      hint: 'Opacity of solid glyph parts (Sun center, Moon crescent, node knobs).' },
   ] },
   { id: 'shared', title: 'Shared', params: [
     { key: 'aspWidth', label: 'Aspect line thickness', min: 0.3, max: 2.5, step: 0.05, def: 1 },
@@ -143,8 +157,6 @@ export function labelTokenPitch(lblGlyphSize, lblTextSize, lblSignSize, pitchSca
 }
 
 
-const SIGN_GLYPHS = ['\u2648', '\u2649', '\u264A', '\u264B', '\u264C', '\u264D',
-                     '\u264E', '\u264F', '\u2650', '\u2651', '\u2652', '\u2653'];
 // Element colors: fire, earth, air, water (sign index % 4, Aries = 0).
 const ELEMENT_COLORS = ['#ff7b72', '#e3b341', '#79c0ff', '#a371f7'];
 const PLANET_GLYPHS = ['\u2609', '\u263D', '\u263F', '\u2640', '\u2642',
@@ -336,6 +348,12 @@ function degLabel(lon, angleFmt) {
   return `${dd}\u00B0${String(mm).padStart(2, '0')}\u2032`;
 }
 
+// Vector-glyph render options from the 'glyphs' style section; a weight
+// parameter (400..900) scales the base stroke width linearly.
+function glyphOpts(gst, weight) {
+  return { strokeW: gst.strokeW * (weight || 400) / 400, strokeO: gst.strokeOpacity, fillO: gst.fillOpacity };
+}
+
 function text(x, y, s, size, fill, extra = '', weight = 0) {
   const w = weight > 400 ? ` font-weight="${weight}"` : '';
   return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" `
@@ -380,7 +398,7 @@ export function renderChartSVG(out, opts = {}) {
   for (let k = 0; k < 12; k++) {
     const sIdx = (Math.floor(ref / 30) + k) % 12;
     const [x, y] = P(st.rSign, ref + k * 30 + 15);
-    s += text(x, y, SIGN_GLYPHS[sIdx] + TVS, st.signSize, ELEMENT_COLORS[sIdx % 4], '', st.signWeight);
+    s += signGlyphSVG(sIdx, x, y, st.signSize, ELEMENT_COLORS[sIdx % 4], glyphOpts(_sty.glyphs, st.signWeight));
   }
 
   // --- house cusps: Asc–Dsc axis through the center, the rest inner→outer ---
@@ -507,8 +525,9 @@ export function renderChartSVG(out, opts = {}) {
     const lon = norm360(p.lon);
     const sIdx = Math.floor(lon / 30);
     const d = lon % 30;
-    const g = (p.kind === 'angle' ? p.glyph : p.glyph + TVS) + (p.retro ? 'R' : '');
-    const toks = [{ text: g, glyph: true, color: p.color }];
+    const toks = [p.kind === 'angle'
+      ? { text: p.glyph, glyph: true, color: p.color }
+      : { svgKey: p.key, glyph: true, color: p.color, retro: !!p.retro }];
     let minTok = null;
     if (angleFmt === 'dec') {
       toks.push({ text: `${d.toFixed(2)}\u00B0` });
@@ -517,7 +536,7 @@ export function renderChartSVG(out, opts = {}) {
       toks.push({ text: `${dd}\u00B0` });
       minTok = { text: `${String(mm).padStart(2, '0')}\u2032` };
     }
-    toks.push({ text: SIGN_GLYPHS[sIdx] + TVS, glyph: true, sign: true, color: ELEMENT_COLORS[sIdx % 4] });
+    toks.push({ svgSign: sIdx, glyph: true, sign: true, color: ELEMENT_COLORS[sIdx % 4] });
     if (minTok) toks.push(minTok);
     return toks;
   };
@@ -554,20 +573,28 @@ export function renderChartSVG(out, opts = {}) {
     // glyph at the outer end. Tokens stay together, characters upright.
     const ux = (x - CX) / st.rHug, uy = (y - CY) / st.rHug;
     const toks = spokeTokens(p);
-    const tspans = toks.map((t, i) => {
+    const parts = toks.map((t, i) => {
       const r = st.rHug - i * TOKEN_PITCH;
       const tx = CX + ux * r, ty = CY + uy * r;
-      // Label parts get their own size + weight: point glyph, degree text,
-      // and the sign glyph inside the label.
-      let size = st.lblTextSize, weight = st.lblTextWeight, fill = '#8b949e';
-      if (t.glyph) {
-        if (t.sign) { size = st.lblSignSize; weight = st.lblSignWeight; }
-        else { size = st.lblGlyphSize; weight = st.lblGlyphWeight; }
-        fill = t.color;
+      // Glyph tokens are vector glyphs (glyphs.js) sized/weighted by their
+      // own label parameters; text tokens (degrees, minutes, angle names)
+      // stay font text.
+      if (t.svgKey || t.svgSign != null) {
+        const size = t.sign ? st.lblSignSize : st.lblGlyphSize;
+        const weight = t.sign ? st.lblSignWeight : st.lblGlyphWeight;
+        let g = t.sign
+          ? signGlyphSVG(t.svgSign, tx, ty, size, t.color, glyphOpts(_sty.glyphs, weight))
+          : bodyGlyphSVG(t.svgKey, tx, ty, size, t.color, glyphOpts(_sty.glyphs, weight));
+        if (t.retro) {
+          // Retrograde marker beside the glyph, offset tangentially.
+          const rx = tx - uy * size * 0.8, ry = ty + ux * size * 0.8;
+          g += text(rx, ry, 'R', st.lblTextSize, t.color, '', st.lblGlyphWeight);
+        }
+        return g;
       }
-      const w = weight > 400 ? ` font-weight="${weight}"` : '';
-      const attrs = ` font-size="${size}" fill="${fill}"${w}`;
-      return `<tspan x="${tx.toFixed(1)}" y="${ty.toFixed(1)}"${attrs}>${t.text}</tspan>`;
+      let size = st.lblTextSize, weight = st.lblTextWeight, fill = '#8b949e';
+      if (t.glyph) { size = st.lblGlyphSize; weight = st.lblGlyphWeight; fill = t.color; }
+      return text(tx, ty, t.text, size, fill, '', weight);
     }).join('');
     // Hoverable point group: a transparent hit disc over the token stack
     // (its center sits mid-stack) carries the point identity for the app's
@@ -577,7 +604,7 @@ export function renderChartSVG(out, opts = {}) {
     const hitR = Math.max(18, TOKEN_PITCH * 1.9);
     s += `<g class="chart-point" data-point="${p.key}" tabindex="0" aria-label="${p.name}">`
        + `<circle class="pt-hit" cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="${hitR.toFixed(1)}" fill="transparent"/>`
-       + `<text text-anchor="middle" dominant-baseline="central" font-size="${st.lblTextSize}">${tspans}</text></g>`;
+       + parts + '</g>';
   });
 
   // --- Ptolemaic aspects between the 10 planets, 3° orb ---
@@ -671,7 +698,7 @@ export function renderChartSVG(out, opts = {}) {
         const [x, y] = P(rg, p.plon);
         s += `<g class="chart-point" data-point="${p.key}" data-wheel="${wi + 1}" tabindex="0" aria-label="${p.name} (wheel ${wi + 1})">`
            + `<circle class="pt-hit" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(ost.glyphSize * 0.95).toFixed(1)}" fill="transparent"/>`
-           + text(x, y, p.glyph + TVS, ost.glyphSize, p.color) + '</g>';
+           + bodyGlyphSVG(p.key, x, y, ost.glyphSize, p.color, glyphOpts(_sty.glyphs, 400)) + '</g>';
         if (p.retro) {
           const [rx, ry] = P(rg - ost.glyphSize * 0.75, p.plon);
           s += text(rx, ry, 'R', ost.glyphSize * 0.55, '#8b949e');
@@ -745,7 +772,7 @@ export function renderChartSVGMobile(out, opts = {}) {
   for (let k = 0; k < 12; k++) {
     const sIdx = (Math.floor(ref / 30) + k) % 12;
     const [x, y] = P(st.rSign, ref + k * 30 + 15);
-    s += text(x, y, SIGN_GLYPHS[sIdx] + TVS, st.signSize, ELEMENT_COLORS[sIdx % 4]);
+    s += signGlyphSVG(sIdx, x, y, st.signSize, ELEMENT_COLORS[sIdx % 4], glyphOpts(_sty.glyphs, 400));
   }
 
   // --- house cusps + axis arrows ---
@@ -845,7 +872,7 @@ export function renderChartSVGMobile(out, opts = {}) {
     const [x, y] = P(st.rGlyph, th);
     s += `<g class="chart-point" data-point="${p.key}" tabindex="0" aria-label="${p.name}">`
        + `<circle class="pt-hit" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(st.glyphSize * 0.85).toFixed(1)}" fill="transparent"/>`
-       + text(x, y, p.glyph + TVS, st.glyphSize, p.color || '#e6edf3') + '</g>';
+       + bodyGlyphSVG(p.key, x, y, st.glyphSize, p.color || '#e6edf3', glyphOpts(_sty.glyphs, 400)) + '</g>';
   });
 
   // --- Ptolemaic aspects (same logic as desktop, smaller circle) ---

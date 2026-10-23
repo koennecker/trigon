@@ -103,24 +103,33 @@ function makeOut(planetLons, { asc = 0, mc = 90, node = 0 } = {}) {
 }
 
 function spokeLabels(svg) {
-  // Extract spoke labels. Spokes are the 9.5pt texts (zodiac band uses
-  // different sizes). Returns array of {x, y, rtl, radial} where radial
-  // labels have positioned tspans (x/y on tspan, not text).
+  // Extract spoke labels: the root wheel's chart-point groups (outer-wheel
+  // groups carry data-wheel and are excluded). Groups nest vector-glyph
+  // <g> elements, so each group's extent is found by depth counting.
+  // Each label's parts, in token order (glyph, degree, sign, minutes), are
+  // vector glyphs (<g class="svg-glyph" transform="translate(x y)
+  // scale(k)">) or texts. Returns [{key, parts: [{kind, x, y, size, text?}]}].
   const out = [];
-  const re = /<text([^>]*)font-size="9\.5"([^>]*)>([\s\S]*?)<\/text>/g;
+  const open = /<g class="chart-point" data-point="([^"]+)" tabindex="0"/g;
   let m;
-  while ((m = re.exec(svg))) {
-    const attrs = m[1] + m[2];
-    const body = m[3];
-    const xm = attrs.match(/x="([\d.]+)"/);
-    const ym = attrs.match(/y="([\d.]+)"/);
-    const radial = /<tspan x="/.test(body);
-    out.push({
-      x: xm ? +xm[1] : null,
-      y: ym ? +ym[1] : null,
-      rtl: attrs.includes('direction="rtl"'),
-      radial,
-    });
+  while ((m = open.exec(svg))) {
+    let depth = 1, i = open.lastIndex;
+    const tag = /<\/?g[\s>]/g;
+    tag.lastIndex = i;
+    let tm;
+    while ((tm = tag.exec(svg)) && depth > 0) {
+      depth += tm[0].startsWith('</') ? -1 : 1;
+      i = tag.lastIndex;
+    }
+    const body = svg.slice(open.lastIndex, i);
+    const parts = [];
+    const pre = /<g class="svg-glyph" transform="translate\(([\d.\-]+) ([\d.\-]+)\) scale\(([\d.]+)\)|<text x="([\d.\-]+)" y="([\d.\-]+)"[^>]*font-size="([\d.]+)"[^>]*>([^<]*)<\/text>/g;
+    let pm;
+    while ((pm = pre.exec(body))) {
+      if (pm[1] != null) parts.push({ kind: 'glyph', x: +pm[1], y: +pm[2], size: +pm[3] * 100 });
+      else parts.push({ kind: 'text', x: +pm[4], y: +pm[5], size: +pm[6], text: pm[7] });
+    }
+    out.push({ key: m[1], parts });
   }
   return out;
 }
@@ -133,14 +142,14 @@ describe('renderChartSVG integration', () => {
   });
 
   it('spoke quadrants follow the spec', () => {
-    // All-radial: every label uses positioned tspans along the spoke,
-    // glyph at the outer end. No horizontal labels, no RTL, no rotation.
+    // All-radial: every label's tokens sit along the spoke, glyph at the
+    // outer end. No horizontal labels, no RTL, no rotation.
     // asc=0 at 9 o'clock; ref=0.
     const svg = renderChartSVG(makeOut([180, 0, 90, 270], { asc: 0 }), {});
     const labels = spokeLabels(svg);
     assert.equal(labels.length, 16);
     // No rotate() transforms, no writing-mode, no direction=rtl.
-    assert.equal((svg.match(/font-size="9\.5"[^>]*transform="rotate/g) || []).length, 0,
+    assert.equal((svg.match(/transform="rotate/g) || []).length, 0,
       'spokes must not use rotate transforms');
     assert.equal((svg.match(/writing-mode/g) || []).length, 0,
       'spokes must not use writing-mode');
@@ -148,25 +157,31 @@ describe('renderChartSVG integration', () => {
       'spokes must not use direction=rtl');
     assert.equal((svg.match(/unicode-bidi/g) || []).length, 0,
       'spokes must not use unicode-bidi');
-    // All 16 labels are radial: each has 4 positioned tspans (glyph, degree,
-    // sign, minutes) = 64 positioned tspans total.
-    const positioned = (svg.match(/<tspan x="[\d.]+" y="[\d.]+"/g) || []).length;
-    assert.equal(positioned, 64, `expected 64 radial tspans (16x4), got ${positioned}`);
+    // All 16 labels are radial: each has 4 token parts (glyph, degree,
+    // sign, minutes) = 64 parts total. Vector glyphs: the 12 non-angle
+    // points carry a point glyph and a sign glyph (24); the 4 angles
+    // carry text plus a sign glyph (4) = 28 vector glyphs in labels.
+    const parts = labels.flatMap((l) => l.parts);
+    assert.equal(parts.length, 64, `expected 64 token parts (16x4), got ${parts.length}`);
+    assert.equal(parts.filter((p) => p.kind === 'glyph').length, 28,
+      'expected 28 vector glyphs across the labels');
+    for (const l of labels) assert.equal(l.parts.length, 4, `${l.key} has 4 tokens`);
   });
 
   it('glyph is at the outer end in all quadrants', () => {
-    // All-radial: every label is a <text> with text-anchor=middle containing
-    // positioned tspans; the glyph tspan (font-size=12) is at the largest
-    // radius (outermost). All 16 spoke labels have an anchor.
+    // Token order is [glyph][degree][sign][minutes] from outer to inner:
+    // part radii strictly decrease along each label.
     const svg = renderChartSVG(makeOut([10, 100, 190, 280]), {});
     const labels = spokeLabels(svg);
     assert.equal(labels.length, 16);
-    const spokeTags = svg.match(/<text[^>]*font-size="9\.5"[^>]*>/g) || [];
-    const anchored = spokeTags.filter((t) => /text-anchor="/.test(t)).length;
-    assert.equal(anchored, 16, `all 16 spoke labels need an anchor, got ${anchored}`);
-    // Glyph tokens (12pt) come first in each label's tspan sequence.
-    const glyphFirst = (svg.match(/<text[^>]*font-size="9\.5"[^>]*><tspan x="[\d.]+" y="[\d.]+" font-size="12"/g) || []).length;
-    assert.equal(glyphFirst, 16, `glyph should be first tspan in all 16 labels, got ${glyphFirst}`);
+    for (const l of labels) {
+      const rs = l.parts.map((p) => Math.hypot(p.x - 350, p.y - 350));
+      for (let i = 1; i < rs.length; i++)
+        assert.ok(rs[i] < rs[i - 1], `${l.key}: part ${i} radius ${rs[i]} not inside ${rs[i - 1]}`);
+      // The outermost part is the point glyph (vector) or the angle name.
+      assert.ok(l.parts[0].kind === 'glyph' || /^[A-Z][a-z]$/.test(l.parts[0].text || ''),
+        `${l.key}: first part is the glyph/angle token`);
+    }
   });
 
   it('close pair gets symmetric PAVA displacement with leaders', () => {
@@ -179,28 +194,10 @@ describe('renderChartSVG integration', () => {
   it('labels hug the outer circle (R=248)', () => {
     const svg = renderChartSVG(makeOut([45]), {});
     const labels = spokeLabels(svg);
-    assert.ok(labels.length > 0);
-    const CX = 350, CY = 350;
+    assert.equal(labels.length, 16);
     for (const l of labels) {
-      if (l.radial) {
-        // Radial: first tspan (glyph) should be at R_HUG.
-        const m = svg.match(/<tspan x="([\d.]+)" y="([\d.]+)"[^>]*>[^<]*<\/tspan>/);
-        // (checked per-label below via body parsing; skip here)
-        continue;
-      }
-      const r = Math.hypot(l.x - CX, l.y - CY);
-      // Anchor at R_HUG=248; allow small tolerance for PAVA shifts.
-      assert.ok(r > 230 && r < 265, `label radius ${r.toFixed(1)} not hugging`);
-    }
-    // Radial labels: verify glyph tspan is at R_HUG=248.
-    const re = /<text[^>]*font-size="9\.5"[^>]*>([\s\S]*?)<\/text>/g;
-    let m;
-    while ((m = re.exec(svg))) {
-      if (!/<tspan x="/.test(m[1])) continue;
-      const tm = m[1].match(/<tspan x="([\d.]+)" y="([\d.]+)"/);
-      assert.ok(tm, 'radial label has positioned tspans');
-      const r = Math.hypot(+tm[1] - CX, +tm[2] - CY);
-      assert.ok(r > 240 && r < 256, `glyph radius ${r.toFixed(1)} not at R_HUG`);
+      const r = Math.hypot(l.parts[0].x - 350, l.parts[0].y - 350);
+      assert.ok(r > 240 && r < 256, `${l.key} glyph radius ${r.toFixed(1)} not at R_HUG`);
     }
   });
 });
@@ -218,6 +215,7 @@ describe('chart style', () => {
     assert.deepEqual(d.mobile,
       { rOut: 165, rSign: 150, rAsp: 85, rGlyph: 218, glyphSize: 32, signSize: 16 });
     assert.deepEqual(d.shared, { aspWidth: 1, sepScale: 1 });
+    assert.deepEqual(d.glyphs, { strokeW: 7, strokeOpacity: 1, fillOpacity: 1 });
     assert.deepEqual(d.outer,
       { ringGap: 35, bandWidth: 30, ringStep: 20, glyphSize: 13, labelSize: 11, tickLen: 8 });
   });
@@ -267,40 +265,29 @@ describe('chart style', () => {
   it('huge label sizes widen the declutter guard and token pitch', () => {
     const svg = renderChartSVG(makeOut([10, 100, 190, 280]),
       { style: { desktop: { lblGlyphSize: 48, lblTextSize: 38 } } });
-    // token pitch = 1.1 * max(48, 38) = 52.8 along each radial spoke:
-    // measure Euclidean tspan spacing within each label's <text>.
-    const texts = [...svg.matchAll(/<text[^>]*>(.*?)<\/text>/g)].map(m => m[1]);
+    // token pitch = 1.1 * max(48, 38, 12) = 52.8 along each radial spoke:
+    // measure Euclidean spacing between consecutive token parts per label.
+    const labels = spokeLabels(svg);
     let n = 0;
-    for (const t of texts) {
-      const pts = [...t.matchAll(/<tspan x="([\d.]+)" y="([\d.]+)"/g)]
-        .map(m => [+m[1], +m[2]]);
-      for (let i = 1; i < pts.length; i++) {
-        const g = Math.hypot(pts[i][0] - pts[i-1][0], pts[i][1] - pts[i-1][1]);
+    for (const l of labels) {
+      for (let i = 1; i < l.parts.length; i++) {
+        const g = Math.hypot(l.parts[i].x - l.parts[i - 1].x, l.parts[i].y - l.parts[i - 1].y);
         assert.ok(Math.abs(g - 52.8) < 1, `gap ${g}`);
         n++;
       }
     }
     assert.ok(n >= 8, `only ${n} token gaps`);
   });
+
   it('no inter-label token overlap at 2x label sizes', () => {
     // All 10 planets spread out (36° apart): the 2x guard (9°/side) fits.
     const svg = renderChartSVG(makeOut([10, 46, 82, 118, 154, 190, 226, 262, 298, 334], { node: 205 }),
       { style: { desktop: { lblGlyphSize: 24, lblTextSize: 19 } } });
-    // tspans are centered (text-anchor middle, dominant-baseline central):
-    // estimate each token's box (glyphs ~1em wide, text ~0.6em/char) and
-    // require no two tokens from different labels to overlap.
-    const labels = [];
-    for (const m of svg.matchAll(/<text[^>]*font-size="([\d.]+)"[^>]*>([\s\S]*?)<\/text>/g)) {
-      const parentFS = +m[1];
-      const toks = [];
-      for (const tm of m[2].matchAll(/<tspan x="([\d.]+)" y="([\d.]+)"([^>]*)>([\s\S]*?)<\/tspan>/g)) {
-        const fsAttr = tm[3].match(/font-size="([\d.]+)"/);
-        const fs = fsAttr ? +fsAttr[1] : parentFS;
-        const w = fsAttr ? fs : 0.6 * fs * tm[4].length;
-        toks.push({ x: +tm[1], y: +tm[2], w, h: fs });
-      }
-      if (toks.length > 1) labels.push(toks);
-    }
+    // Token boxes: vector glyphs are size x size; text tokens are
+    // ~0.6em per character wide and 1em tall, all center-anchored.
+    const labels = spokeLabels(svg).map((l) => l.parts.map((p) => p.kind === 'glyph'
+      ? { x: p.x, y: p.y, w: p.size, h: p.size }
+      : { x: p.x, y: p.y, w: 0.6 * p.size * (p.text || '').length, h: p.size }));
     assert.ok(labels.length >= 4, 'only ' + labels.length + ' labels');
     for (let a = 0; a < labels.length; a++)
       for (let b = a + 1; b < labels.length; b++)
@@ -312,6 +299,7 @@ describe('chart style', () => {
               'overlap: (' + ta.x + ',' + ta.y + ') vs (' + tb.x + ',' + tb.y + ')');
           }
   });
+
   it('overcrowded arc: guards scale to fit, anchors never invaded', () => {
     // Regression: Moon sat on MC because the spill branch dropped the
     // anchor constraints. Guards must scale until they fit instead.
@@ -357,7 +345,7 @@ describe('chart style', () => {
     const mk = (over) => renderChartSVGMobile(makeOut([10, 100, 190, 280]), { style: over });
     assert.ok(mk(undefined).includes('viewBox="110 110 480 480"'));
     const big = mk({ mobile: { rGlyph: 260, glyphSize: 48 } });
-    assert.ok(big.includes('font-size="48"'), 'glyph size override renders');
+    assert.ok(big.includes('scale(0.4800)'), 'glyph size override renders (vector scale)');
   });
 });
 
