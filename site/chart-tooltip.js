@@ -38,6 +38,8 @@ export function tooltipHTML(data) {
  * @param {object} env
  * @param {() => object} env.panel  the chart panel element
  * @param {(g: object) => object|null} env.tipData  tooltip data for a point group
+ * @param {(html: string) => string} [env.decorateHTML]  post-processes the
+ *   tooltip markup before it is set (e.g. glyph-char -> vector SVG swaps)
  */
 export function createChartTooltip(env) {
   let tipEl = null, tipKey = null;
@@ -67,7 +69,7 @@ export function createChartTooltip(env) {
     }
     const data = env.tipData(g);
     if (!data) { hide(); return; }
-    tipEl.innerHTML = tooltipHTML(data);
+    tipEl.innerHTML = env.decorateHTML ? env.decorateHTML(tooltipHTML(data)) : tooltipHTML(data);
     tipEl.style.display = 'block';
     tipKey = `${g.dataset.point}:${data.wheel}`;
     move(clientX, clientY);

@@ -3,7 +3,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SIGN_PATHS, BODY_PATHS,
-         glyphSVG, signGlyphSVG, bodyGlyphSVG } from '../glyphs.js';
+         glyphSVG, signGlyphSVG, bodyGlyphSVG,
+         glyphInlineSVG, bodyGlyphHTML, signGlyphHTML } from '../glyphs.js';
 
 const BODY_KEYS = ['sun', 'moon', 'mercury', 'venus', 'mars', 'jupiter',
                    'saturn', 'uranus', 'neptune', 'pluto',
@@ -79,5 +80,15 @@ describe('glyphSVG rendering', () => {
       assert.ok(signGlyphSVG(i, 0, 0, 10, '#fff').includes(`d="${SIGN_PATHS[i]}"`));
     assert.ok(bodyGlyphSVG('pluto', 0, 0, 10, '#fff').includes(`d="${BODY_PATHS.pluto}"`));
     assert.equal(bodyGlyphSVG('ceres', 0, 0, 10, '#fff'), '');
+  });
+  it('inline HTML helpers wrap the same paths with the char as title', () => {
+    const sun = bodyGlyphHTML('sun', '#58a6ff', '☉');
+    assert.ok(sun.startsWith('<svg class="glyph-inline" viewBox="0 0 100 100"'));
+    assert.ok(sun.includes('<title>☉</title>'));
+    assert.ok(sun.includes(`<path d="${BODY_PATHS.sun}" fill="#58a6ff"/>`));
+    const ari = signGlyphHTML(0, '#ff7b72', '♈');
+    assert.ok(ari.includes(`<path d="${SIGN_PATHS[0]}" fill="#ff7b72"/>`));
+    assert.equal(bodyGlyphHTML('ceres', '#fff', '?'), '?', 'unknown key falls back to the char');
+    assert.equal(signGlyphHTML(99, '#fff', '?'), '?', 'bad sign falls back to the char');
   });
 });

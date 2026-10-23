@@ -15,7 +15,7 @@ import { attachDateTime } from './datetime.js';
 import { fmtLon, fmtCoord, fmtSignPos, readAngleFmt, writeAngleFmt, rowsToCSV, gotoButtonHTML,
   readGlyphsPref, writeGlyphsPref, readAngleMode, writeAngleMode } from './format.js';
 import { parseShareHashString, shareLink, shareLinks } from './share.js';
-import { tableRows, buildTableHTML, speedIndicatorHTML, angleRows, pointTooltip } from './table.js';
+import { tableRows, buildTableHTML, speedIndicatorHTML, angleRows, pointTooltip, swapGlyphChars } from './table.js';
 import { computeLots, buildLotsHTML, readLotOptions, writeLotOptions, sunAltitudeDeg,
   computeCatalogLots, buildCatalogHTML, buildCatalogSelectedHTML, readCatalogSelection, writeCatalogSelection } from './lots.js';
 import {
@@ -512,8 +512,11 @@ function maybeRefreshExtras(force = false) {
       // vs ~500 or less for every other body), so ±850 days guarantees
       // every body has a station on both sides of the instant.
       const grid = scan(jd - 850, 5, 340);
-      const fmtStn = s => s
-        ? `${s.type} ${fmtSignPos(s.lon, 'dms', glyphsOn)} ${gotoButtonHTML(s.jd, fmtInstant(s.jd))}` : '—';
+      const fmtStn = s => {
+        if (!s) return '—';
+        const str = `${s.type} ${fmtSignPos(s.lon, 'dms', glyphsOn)} ${gotoButtonHTML(s.jd, fmtInstant(s.jd))}`;
+        return glyphsOn ? swapGlyphChars(str) : str;
+      };
       for (let ib = 2; ib <= 9; ib++) {
         const { prev, next } = stationsAround(grid, eph, ib, jd);
         const p = document.querySelector(`#panel-table td.stn-prev[data-ib="${ib}"]`);
@@ -943,7 +946,8 @@ const dtg = createDateTimeGroups({
   attach: (input, opts) => attachDateTime(input, opts),
 });
 // Chart point tooltips (display mechanics; data assembled by chartTipData).
-const chartTip = createChartTooltip({ panel: () => $('panel-chart'), tipData: chartTipData });
+const chartTip = createChartTooltip({ panel: () => $('panel-chart'), tipData: chartTipData,
+  decorateHTML: html => glyphsOn ? swapGlyphChars(html) : html });
 // Outer wheels (biwheel/triwheel panels + animation target).
 const outerApi = createOuterWheels({
   el: $, rootInstantMs: () => S.instantMs,

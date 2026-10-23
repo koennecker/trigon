@@ -2,7 +2,7 @@
 // Run: node --test test/table.test.js  (from site/)
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { BODIES, tableRows, buildTableHTML, speedIndicatorHTML, angleRows, pointTooltip, TOOLTIP_POINT_KEYS } from '../table.js';
+import { BODIES, tableRows, buildTableHTML, speedIndicatorHTML, angleRows, pointTooltip, TOOLTIP_POINT_KEYS, swapGlyphChars } from '../table.js';
 import { fmtLon } from '../format.js';
 
 // Synthetic chart_compute-shaped output: 84 doubles. Bodies 0..11 at
@@ -107,6 +107,29 @@ describe('buildTableHTML', () => {
     assert.equal(rows[0].dign.domicile, 'Jupiter'); // Pisces domicile lord
     assert.equal(rows[7].dign, null);         // Uranus: no dignity columns
     assert.equal(tableRows(fakeOut(), 'dms')[0].dign, null); // no opts, no dignities
+  });
+});
+
+describe('vector glyphs in HTML (glyphs mode)', () => {
+  it('swapGlyphChars replaces sign and body chars (with U+FE0E) by inline SVGs', () => {
+    const out = swapGlyphChars('<td>☉︎</td><td>23° ♓︎ 14′</td><td>Jupiter</td>');
+    assert.ok(out.includes('<svg class="glyph-inline"'), 'svg present');
+    assert.ok(out.includes('<title>☉</title>'), 'char kept as title (Sun)');
+    assert.ok(out.includes('<title>♓</title>'), 'char kept as title (Pisces)');
+    assert.ok(out.includes('fill="#58a6ff"'), 'Sun planet color');
+    assert.ok(out.includes('fill="#a371f7"'), 'Pisces water color');
+    assert.ok(!/[☉-☋♀-♇♈-♓]/.test(out.replace(/<title>[^<]*<\/title>/g, '')), 'no raw glyph chars outside titles');
+    assert.ok(out.includes('<td>Jupiter</td>'), 'plain names untouched');
+    assert.equal(swapGlyphChars('Sun in Pisces'), 'Sun in Pisces', 'names mode is a no-op');
+  });
+  it('buildTableHTML in glyphs mode renders vector glyphs everywhere', () => {
+    const html = buildTableHTML(fakeOut(), 'dms', { decan: 'chaldean', isDay: true }, { glyphs: true });
+    assert.ok((html.match(/glyph-inline/g) || []).length >= 30, 'many inline glyphs');
+    const bare = html.replace(/<title>[^<]*<\/title>/g, '');
+    assert.ok(!/[☉-☋♀-♇♈-♓]/.test(bare), 'no font glyph chars remain');
+    const named = buildTableHTML(fakeOut(), 'dms', { decan: 'chaldean', isDay: true }, { glyphs: false });
+    assert.ok(!named.includes('glyph-inline'), 'names mode has no inline glyphs');
+    assert.ok(named.includes('>Sun<'), 'names mode keeps names');
   });
 });
 

@@ -91,6 +91,54 @@ def main():
             timeout=8000)
         check('fillOpacity 0.25 reaches the glyph fill paths', True)
 
+        # --- table in glyphs mode renders vector glyphs ---
+        page.click('#views .tabs button[data-tab="table"]')
+        page.wait_for_selector('#panel-table table', timeout=10000)
+        page.click('#glyph-toggle')
+        page.wait_for_selector('#panel-table td.body svg.glyph-inline', timeout=10000)
+        tbl = page.evaluate("""() => {
+          const sunCell = document.querySelector('#panel-table tbody tr td.body');
+          const lonCell = document.querySelector('#panel-table tbody tr td.num');
+          return {
+            inline: document.querySelectorAll('#panel-table table svg.glyph-inline').length,
+            sunTitle: sunCell ? sunCell.textContent.trim() : '',
+            lonSvg: lonCell ? !!lonCell.querySelector('svg.glyph-inline') : false,
+            lonText: lonCell ? lonCell.textContent : '',
+          };
+        }""")
+        check('table glyphs mode: many inline vector glyphs', tbl['inline'] >= 30, tbl)
+        check('table body cell keeps the char as svg title', tbl['sunTitle'] == '☉', tbl)
+        check('table longitude cell carries a vector sign glyph', tbl['lonSvg'], tbl)
+        check('table longitude text still reads with the sign char',
+              any(c in tbl['lonText'] for c in '♈♉♊♋♌♍♎♏♐♑♒♓'), tbl)
+        try:
+            page.wait_for_selector('#panel-table td.stn-prev[data-ib="2"] svg.glyph-inline',
+                                   timeout=30000)
+            check('station cell sign glyph is vector', True)
+        except Exception as e:
+            check('station cell sign glyph is vector', False, repr(e)[:100])
+        page.screenshot(path='/tmp/glyphs_table.png')
+
+        # --- hover tooltip honors glyphs mode with vector glyphs ---
+        page.click('#views .tabs button[data-tab="chart"]')
+        page.wait_for_selector('#panel-chart svg', timeout=10000)
+        sun = page.query_selector('.chart-point[data-point="sun"]')
+        box = sun.bounding_box()
+        page.mouse.move(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
+        page.wait_for_selector('#chart-tip', state='visible', timeout=5000)
+        page.wait_for_function(
+            "document.querySelector('#chart-tip').innerHTML.includes('glyph-inline')",
+            timeout=5000)
+        tip = page.evaluate("""() => {
+          const t = document.querySelector('#chart-tip');
+          return { html: t.innerHTML, text: t.textContent };
+        }""")
+        check('tooltip renders vector glyphs in glyphs mode',
+              'glyph-inline' in tip['html'], tip['html'][:120])
+        check('tooltip text still carries the sign char (svg title)',
+              any(c in tip['text'] for c in '♈♉♊♋♌♍♎♏♐♑♒♓'), tip['text'][:120])
+        page.screenshot(path='/tmp/glyphs_tip.png')
+
         # --- mobile renderer ---
         mob = b.new_page(viewport={'width': 393, 'height': 800})
         mob.on('pageerror', lambda e: errors.append('mobile: ' + str(e)))

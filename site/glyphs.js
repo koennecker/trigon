@@ -76,3 +76,39 @@ export function bodyGlyphSVG(key, cx, cy, size, color, o) {
   const d = BODY_PATHS[key];
   return d ? glyphSVG(d, cx, cy, size, color, o) : '';
 }
+
+/**
+ * One glyph as a standalone inline SVG for HTML contexts (tables,
+ * tooltips): sized in em against the surrounding text by the
+ * .glyph-inline CSS rule, with the unicode char kept in a <title> so
+ * text extraction (textContent, copy) still yields the character.
+ * @param {string} d path data on the 0..100 grid
+ * @param {string} color fill color
+ * @param {string} ch the unicode glyph char (title text)
+ * @returns {string} svg markup
+ */
+export function glyphInlineSVG(d, color, ch) {
+  return `<svg class="glyph-inline" viewBox="0 0 100 100" aria-hidden="true"><title>${ch}</title><path d="${d}" fill="${color}"/></svg>`;
+}
+
+/**
+ * @param {string} key point key (POINT_KEYS)
+ * @param {string} color fill color
+ * @param {string} ch the unicode glyph char (title text)
+ * @returns {string} inline svg markup (the char itself for unknown keys)
+ */
+export function bodyGlyphHTML(key, color, ch) {
+  const d = BODY_PATHS[key];
+  return d ? glyphInlineSVG(d, color, ch) : ch;
+}
+
+/**
+ * @param {number} signIdx 0..11
+ * @param {string} color fill color
+ * @param {string} ch the unicode glyph char (title text)
+ * @returns {string} inline svg markup (the char itself for bad indexes)
+ */
+export function signGlyphHTML(signIdx, color, ch) {
+  const d = SIGN_PATHS[signIdx];
+  return d ? glyphInlineSVG(d, color, ch) : ch;
+}

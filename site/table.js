@@ -7,7 +7,8 @@
 // Node is not displayed anywhere.)
 // No DOM: both functions return strings / row structs and take the angle
 // format explicitly, so they import cleanly in node for tests.
-import { fmtLon, fmtDec, fmtSpeedDR, motionOf, fmtMag, dash, csvDownloadButton, BODY_GLYPHS, PLANET_COLORS, signColor } from './format.js';
+import { fmtLon, fmtDec, fmtSpeedDR, motionOf, fmtMag, dash, csvDownloadButton, BODY_GLYPHS, SIGN_GLYPHS, PLANET_COLORS, signColor } from './format.js';
+import { bodyGlyphHTML, signGlyphHTML } from './glyphs.js';
 import { speedPercentile, speedZ, speedColor } from './speed-stats.js';
 import { magBrightness } from './mag-stats.js';
 import { decanLord, egyptianBoundLord, triplicityLords, exaltationLord, d12Lord, d9Lord, domicileLord, pointLords } from './dignities.js';
@@ -18,6 +19,32 @@ export const BODIES = ['Sun', 'Moon', 'Mercury', 'Venus', 'Mars', 'Jupiter',
 
 /** @param {string} name @param {boolean} glyphs @returns {string} */
 const pName = (name, glyphs) => glyphs && BODY_GLYPHS[name] ? BODY_GLYPHS[name] : name;
+
+// Unicode glyph char -> inline vector SVG (glyphs.js), for HTML built in
+// glyphs mode: table cells, station text, chart tooltips. The char ->
+// body key/color and sign index/color maps derive from the same
+// format.js tables the text rendering uses, so the two stay in step.
+// The inline SVG keeps the char in a <title>, so textContent read-backs
+// (the tooltip's station values) are unchanged.
+const GLYPH_SVG_BY_CHAR = new Map();
+Object.entries(BODY_GLYPHS).forEach(([name, g]) => {
+  const ch = [...g][0];
+  const key = name.toLowerCase().replace(' ', '-');
+  GLYPH_SVG_BY_CHAR.set(ch, bodyGlyphHTML(key, PLANET_COLORS[BODIES.indexOf(name)], ch));
+});
+SIGN_GLYPHS.forEach((g, i) => {
+  GLYPH_SVG_BY_CHAR.set([...g][0], signGlyphHTML(i, signColor(i), [...g][0]));
+});
+const GLYPH_CHAR_RE = new RegExp(`[${[...GLYPH_SVG_BY_CHAR.keys()].join('')}]\\uFE0E?`, 'g');
+
+/**
+ * Replace every unicode sign/body glyph char in an HTML string with its
+ * inline vector SVG. A no-op on text without glyph chars (names mode).
+ * @param {string} html @returns {string}
+ */
+export function swapGlyphChars(html) {
+  return html.replace(GLYPH_CHAR_RE, m => GLYPH_SVG_BY_CHAR.get([...m][0]) || m);
+}
 
 /** Longitude text with the sign name/glyph wrapped in its element color. */
 function lonHTML(lonDeg, fmt, glyphs) {
@@ -304,5 +331,6 @@ export function buildTableHTML(out, fmt = 'dms', dig = undefined, opts = {}) {
       + `</div>`;
   }
   html += '</div>';
-  return html;
+  // Glyphs mode renders the vector glyphs, not the font chars.
+  return glyphs ? swapGlyphChars(html) : html;
 }
