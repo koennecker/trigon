@@ -184,6 +184,25 @@ describe('renderChartSVG integration', () => {
     }
   });
 
+  it('retrograde adds a trailing red ℞ spoke token after the minutes', () => {
+    const out = makeOut([50, 130]);
+    out[0 * 6 + 3] = -1; // Sun retrograde; Moon direct
+    const svg = renderChartSVG(out, {});
+    const labels = spokeLabels(svg);
+    const sun = labels.find((l) => l.key === 'sun');
+    const moon = labels.find((l) => l.key === 'moon');
+    assert.equal(sun.parts.length, 5, 'retrograde label has 5 tokens');
+    const rx = sun.parts[4];
+    assert.equal(rx.kind, 'text');
+    assert.equal(rx.text, '\u211E', 'last token is ℞');
+    // Slot 4 along the spoke: radius rHug - 4 * pitch (248 - 4*13.2).
+    const r = Math.hypot(rx.x - 350, rx.y - 350);
+    assert.ok(Math.abs(r - 195.2) < 1.5, `℞ radius ${r.toFixed(1)}`);
+    assert.ok(/fill="#ff6b6b">\u211E</.test(svg), '℞ is filled red');
+    assert.equal(moon.parts.length, 4, 'direct label keeps 4 tokens');
+    assert.equal((svg.match(/\u211E/g) || []).length, 1, 'exactly one ℞');
+  });
+
   it('close pair gets symmetric PAVA displacement with leaders', () => {
     // Two planets 1° apart: PAVA separates them, leaders emitted.
     const svg = renderChartSVG(makeOut([100, 101]), {});

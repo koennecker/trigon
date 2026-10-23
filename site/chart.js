@@ -163,6 +163,8 @@ const PLANET_GLYPHS = ['\u2609', '\u263D', '\u263F', '\u2640', '\u2642',
 const PLANET_COLORS = ['#58a6ff', '#ffd75e', '#9fe870', '#ff9d5c', '#ff6b6b',
                        '#7ee787', '#d2a8ff', '#f778ba', '#79c0ff', '#ffa657'];
 const NODE_N = '\u260A', NODE_S = '\u260B'; // ☊ ☋ (U+260A/B, not U+264A/B which are ♊/♋)
+// Retrograde spoke token: a red ℞ (U+211E) after the minutes.
+const RETRO_COLOR = '#ff6b6b';
 // Stable point identities for hover tooltips: data-point keys on the
 // rendered groups, resolved to table data by the app via table.js.
 const POINT_KEYS = ['sun', 'moon', 'mercury', 'venus', 'mars', 'jupiter',
@@ -460,7 +462,8 @@ export function renderChartSVG(out, opts = {}) {
   // ALL labels use the radial spoke layout (no horizontal/radial mix):
   // tokens are positioned individually along the radial direction, glyph at
   // the outer end, characters upright. Token order is always
-  // [glyph][degree][sign][minutes] from outer to inner.
+  // [glyph][degree][sign][minutes] from outer to inner, plus a trailing
+  // red ℞ token for retrograde points.
   // Adaptive hw: labels in dense neighborhoods (nearest neighbor < 7°)
   // get a wider guard (prevents token overlap); isolated labels get a
   // narrower one (prevents over-displacement of mid-sign glyphs). Both
@@ -528,7 +531,7 @@ export function renderChartSVG(out, opts = {}) {
     const d = lon % 30;
     const toks = [p.kind === 'angle'
       ? { text: p.glyph, glyph: true, color: p.color }
-      : { svgKey: p.key, glyph: true, color: p.color, retro: !!p.retro }];
+      : { svgKey: p.key, glyph: true, color: p.color }];
     let minTok = null;
     if (angleFmt === 'dec') {
       toks.push({ text: `${d.toFixed(2)}\u00B0` });
@@ -539,6 +542,8 @@ export function renderChartSVG(out, opts = {}) {
     }
     toks.push({ svgSign: sIdx, glyph: true, sign: true, color: ELEMENT_COLORS[sIdx % 4] });
     if (minTok) toks.push(minTok);
+    // Retrograde is a spoke token of its own, after the minutes: a red ℞.
+    if (p.retro) toks.push({ text: '\u211E', retro: true });
     return toks;
   };
   // Spoke layout (all-radial): every label's tokens are positioned
@@ -583,26 +588,23 @@ export function renderChartSVG(out, opts = {}) {
       if (t.svgKey || t.svgSign != null) {
         const size = t.sign ? st.lblSignSize : st.lblGlyphSize;
         const weight = t.sign ? st.lblSignWeight : st.lblGlyphWeight;
-        let g = t.sign
+        return t.sign
           ? signGlyphSVG(t.svgSign, tx, ty, size, t.color, glyphOpts(_sty.glyphs, weight))
           : bodyGlyphSVG(t.svgKey, tx, ty, size, t.color, glyphOpts(_sty.glyphs, weight));
-        if (t.retro) {
-          // Retrograde marker beside the glyph, offset tangentially.
-          const rx = tx - uy * size * 0.95, ry = ty + ux * size * 0.95;
-          g += text(rx, ry, 'R', st.lblTextSize, t.color, '', st.lblGlyphWeight);
-        }
-        return g;
       }
       let size = st.lblTextSize, weight = st.lblTextWeight, fill = '#8b949e';
       if (t.glyph) { size = st.lblGlyphSize; weight = st.lblGlyphWeight; fill = t.color; }
+      if (t.retro) fill = RETRO_COLOR;
       return text(tx, ty, t.text, size, fill, '', weight);
     }).join('');
     // Hoverable point group: a transparent hit disc over the token stack
     // (its center sits mid-stack) carries the point identity for the app's
     // tooltip; the disc is the focus/hover target, text stays passive.
-    const hx = CX + ux * (st.rHug - 1.5 * TOKEN_PITCH);
-    const hy = CY + uy * (st.rHug - 1.5 * TOKEN_PITCH);
-    const hitR = Math.max(18, TOKEN_PITCH * 1.9);
+    // The stack is 4 tokens, 5 for a retrograde point (trailing ℞).
+    const midSlot = (toks.length - 1) / 2;
+    const hx = CX + ux * (st.rHug - midSlot * TOKEN_PITCH);
+    const hy = CY + uy * (st.rHug - midSlot * TOKEN_PITCH);
+    const hitR = Math.max(18, TOKEN_PITCH * (midSlot + 0.5));
     s += `<g class="chart-point" data-point="${p.key}" tabindex="0" aria-label="${p.name}">`
        + `<circle class="pt-hit" cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="${hitR.toFixed(1)}" fill="transparent"/>`
        + parts + '</g>';
