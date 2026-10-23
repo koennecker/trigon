@@ -18,6 +18,19 @@ def check(name, ok, detail=""):
     results.append((name, ok, detail))
     print(("PASS " if ok else "FAIL ") + name + (f" — {detail}" if detail else ""))
 
+def open_settings(pg):
+    if pg.locator("#settings-modal:not([hidden])").count():
+        return
+    if pg.locator("#input-card.open").count() == 0:
+        pg.locator("#input-fab").click(timeout=8000)
+        pg.wait_for_selector("#input-card.open", timeout=8000)
+    pg.click("#settings-open")
+    pg.wait_for_selector("#settings-modal:not([hidden])", timeout=8000)
+
+def close_settings(pg):
+    pg.click("#settings-close")
+    pg.wait_for_selector("#settings-modal[hidden]", state="attached", timeout=8000)
+
 def set_num(page, sec, key, val):
     page.evaluate(f"""() => {{
       const i = document.querySelector('input[data-sec="{sec}"][data-key="{key}"]');
@@ -74,22 +87,21 @@ try:
         page.wait_for_timeout(400)
         calc_and_chart(page)
 
-        # --- panel structure ---
+        # --- panel structure (Chart section of the settings modal) ---
+        open_settings(page)
         nsec = page.eval_on_selector_all(".chart-style .cs-sec", "els => els.length")
         nsl = page.eval_on_selector_all(".chart-style input[type=number]", "els => els.length")
-        check("customize panel has 3 sections and 18 number inputs", nsec == 3 and nsl == 18,
+        check("chart settings have 5 sections and 33 number inputs", nsec == 5 and nsl == 33,
               f"sections={nsec} inputs={nsl}")
         check("outer circle renders at default r=294", outer_r(page) == "294", outer_r(page))
 
-        # --- details stays open while dragging ---
-        page.click(".chart-style summary")
-        page.wait_for_timeout(120)
+        # --- modal stays open while editing ---
         set_num(page, "desktop", "rOut", 310)
         check("rOut input moves the rendered circle", outer_r(page) == "310", outer_r(page))
         check("input shows the typed value", num_val(page, "desktop", "rOut") == "310",
               num_val(page, "desktop", "rOut"))
-        check("details stays open during input",
-              page.eval_on_selector(".chart-style", "el => el.open"))
+        check("settings modal stays open during input",
+              page.locator("#settings-modal:not([hidden])").count() == 1)
 
         # --- aspect line thickness scales ---
         w1 = aspect_w(page)
@@ -100,20 +112,10 @@ try:
 
         # --- arbitrary sizes: beyond the old 18 cap, and invalid reverts ---
         set_num(page, "desktop", "lblGlyphSize", 48)
-        bigpitch = page.evaluate("""() => {
-          const texts = [...document.querySelectorAll('#panel-chart .chart-wrap text')];
-          for (const t of texts) {
-            const sp = [...t.querySelectorAll('tspan')];
-            if (sp.length > 1) {
-              const a = sp[0], b = sp[1];
-              return Math.hypot(+b.getAttribute('x') - +a.getAttribute('x'),
-                                +b.getAttribute('y') - +a.getAttribute('y'));
-            }
-          }
-          return null;
-        }""")
-        check("arbitrary lblGlyphSize=48 widens token pitch to 60",
-              bigpitch and abs(bigpitch - 60) < 1, str(bigpitch))
+        bigscale = page.evaluate("""() => [...document.querySelectorAll(
+          '#panel-chart .chart-point .svg-glyph')].some(g =>
+            (g.getAttribute('transform') || '').includes('scale(0.48'))""")
+        check("arbitrary lblGlyphSize=48 scales the label glyphs", bigscale)
         page.evaluate("""() => {
           const i = document.querySelector('input[data-sec="desktop"][data-key="lblGlyphSize"]');
           i.value = 'abc';
@@ -133,10 +135,12 @@ try:
         # --- glyph size applies ---
         set_num(page, "desktop", "signSize", 24)
         has24 = page.evaluate("""() => [...document.querySelectorAll(
-          '#panel-chart .chart-wrap text')].some(t => t.getAttribute('font-size') === '24')""")
+          '#panel-chart .svg-glyph')].some(g =>
+            (g.getAttribute('transform') || '').includes('scale(0.24'))""")
         check("sign glyph size renders at 24", has24)
 
         # --- live clock does not reset custom style ---
+        close_settings(page)
         page.check("#clock-toggle")
         set_num(page, "desktop", "rOut", 305)
         page.wait_for_timeout(2400)
@@ -159,12 +163,13 @@ try:
               == {"desktop": {"rOut": 305, "signSize": 24, "lblGlyphSize": 48}, "shared": {"aspWidth": 2}})
 
         # --- reset restores defaults ---
-        page.click(".chart-style summary")
+        open_settings(page)
         page.click("#cs-reset")
         page.wait_for_timeout(200)
         check("reset restores r=294", outer_r(page) == "294", outer_r(page))
         check("reset clears storage",
               page.evaluate("() => localStorage.getItem('astroweb-chart-style')") is None)
+        close_settings(page)
         page.screenshot(path="/tmp/cs_desktop.png")
 
         # --- mobile wheel honors its own section ---
@@ -192,22 +197,26 @@ try:
           .getAttribute('viewBox') === '110 110 480 480'""")
         check("mobile viewport renders the mobile wheel", is_mobile)
         g1 = m.evaluate("""() => [...document.querySelectorAll(
-          '#panel-chart .chart-wrap text')].some(t => t.getAttribute('font-size') === '32')""")
+          '#panel-chart .svg-glyph')].some(g =>
+            (g.getAttribute('transform') || '').includes('scale(0.32'))""")
         check("mobile glyphs default to 32", g1)
-        m.click(".chart-style summary")
+        open_settings(m)
         set_num(m, "mobile", "glyphSize", 40)
         g2 = m.evaluate("""() => [...document.querySelectorAll(
-          '#panel-chart .chart-wrap text')].some(t => t.getAttribute('font-size') === '40')""")
+          '#panel-chart .svg-glyph')].some(g =>
+            (g.getAttribute('transform') || '').includes('scale(0.4'))""")
         check("mobile glyphSize number input applies", g2)
         set_num(m, "mobile", "glyphSize", 96)
         g3 = m.evaluate("""() => [...document.querySelectorAll(
-          '#panel-chart .chart-wrap text')].some(t => t.getAttribute('font-size') === '96')""")
+          '#panel-chart .svg-glyph')].some(g =>
+            (g.getAttribute('transform') || '').includes('scale(0.96'))""")
         check("mobile accepts arbitrary glyphSize=96", g3)
         set_num(m, "mobile", "rOut", 150)
         mr = m.evaluate("""() => document.querySelector(
           '#panel-chart .chart-wrap circle[stroke="#8b949e"][stroke-width="1.5"]'
         ).getAttribute('r')""")
         check("mobile rOut number input moves the rim", mr == "150", mr)
+        close_settings(m)
         m.screenshot(path="/tmp/cs_mobile.png")
 
         check("zero console errors", not cerr, "; ".join(cerr[:3]))

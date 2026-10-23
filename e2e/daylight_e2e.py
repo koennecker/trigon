@@ -89,9 +89,17 @@ def calculate(pg, dt):
     pg.wait_for_selector("#panel-table table", state="attached", timeout=60000)
 
 def open_sky_opts(pg):
-    """The View buttons and daylight checkbox live in <details id=sky-opts>."""
-    if pg.locator("#sky-opts[open]").count() == 0:
-        real_click(pg, "#sky-opts summary")
+    """Sky options live in the settings modal (gear in the drawer head)."""
+    if pg.locator("#settings-modal:not([hidden])").count() == 0:
+        if pg.locator("#input-card.open").count() == 0:
+            real_click(pg, "#input-fab")
+            pg.wait_for_selector("#input-card.open", timeout=8000)
+        real_click(pg, "#settings-open")
+        pg.wait_for_selector("#settings-modal:not([hidden])", timeout=8000)
+
+def close_sky_opts(pg):
+    real_click(pg, "#settings-close")
+    pg.wait_for_selector("#settings-modal[hidden]", state="attached", timeout=8000)
 
 def open_sky(pg):
     real_click(pg, '#views .tabs button[data-tab="sky"]')
@@ -99,7 +107,7 @@ def open_sky(pg):
     # daylight must be on: sunAlt (and the 'Sun' readout segment) only exists then
     open_sky_opts(pg)
     pg.get_by_label("Realistic daylight").check(timeout=8000)
-    real_click(pg, "#sky-opts summary")  # close: the open panel would darken the pixel sample
+    close_sky_opts(pg)  # close: the open modal would darken the pixel sample
     pg.wait_for_function("document.getElementById('sky-readout').textContent.includes('Sun')",
                          timeout=30000)
     pg.wait_for_timeout(1200)  # let the frame settle
@@ -151,7 +159,7 @@ def main():
                 real_click(pg, "label:has-text('Realistic daylight')")
                 pg.wait_for_timeout(1200)
                 # close the options panel: it would darken the pixel sample
-                real_click(pg, "#sky-opts summary")
+                close_sky_opts(pg)
                 pg.wait_for_timeout(600)
                 mean, r, g, b = canvas_stats(pg, f"{SHOT}/day_toggle_off.png")
                 check("toggle off: dark sky", classify(mean, r, b) == "dark",
@@ -159,7 +167,7 @@ def main():
                 open_sky_opts(pg)
                 real_click(pg, "label:has-text('Realistic daylight')")
                 pg.wait_for_timeout(1200)
-                real_click(pg, "#sky-opts summary")
+                close_sky_opts(pg)
                 pg.wait_for_timeout(600)
                 mean, r, g, b = canvas_stats(pg, f"{SHOT}/day_toggle_on.png")
                 check("toggle on: day sky back", classify(mean, r, b) == "bright",
@@ -172,13 +180,13 @@ def main():
                 open_sky_opts(pg)
                 real_click(pg, 'button[data-v="sphere"]')
                 pg.wait_for_timeout(1500)
-                real_click(pg, "#sky-opts summary")
+                close_sky_opts(pg)
                 pg.wait_for_timeout(600)
                 mean, r, g, b = canvas_stats(pg, f"{SHOT}/day_sphere.png")
                 check("sphere view dark", mean < 60, f"mean {mean:.0f}")
                 open_sky_opts(pg)
                 real_click(pg, 'button[data-v="observer"]')
-                real_click(pg, "#sky-opts summary")
+                close_sky_opts(pg)
                 pg.wait_for_timeout(600)
             except Exception as e:
                 check("sphere view", False, f"{type(e).__name__}: {e}")

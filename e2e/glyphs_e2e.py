@@ -69,8 +69,9 @@ def main():
             timeout=10000)
         check('outer wheel points are vector glyphs', True)
 
-        # --- Glyphs style section drives the paths and persists ---
-        page.locator('.chart-style summary').click()
+        # --- Glyphs style section (settings modal) drives the paths ---
+        page.click('#settings-open')
+        page.wait_for_selector('#settings-modal:not([hidden])', timeout=8000)
         sw = page.locator('.chart-style input[data-sec="glyphs"][data-key="outlineW"]')
         check('Glyphs section outlineW input exists', sw.count() == 1)
         sw.fill('3')
@@ -90,12 +91,16 @@ def main():
             ".some(p => p.getAttribute('fill-opacity') === '0.25')",
             timeout=8000)
         check('fillOpacity 0.25 reaches the glyph fill paths', True)
+        page.click('#settings-close')
 
         # --- table in glyphs mode renders vector glyphs ---
         page.click('#views .tabs button[data-tab="table"]')
         page.wait_for_selector('#panel-table table', timeout=10000)
-        page.click('#glyph-toggle')
+        page.click('#settings-open')
+        page.wait_for_selector('#settings-modal:not([hidden])', timeout=8000)
+        page.click('[data-set-glyphs="glyphs"]')
         page.wait_for_selector('#panel-table td.body svg.glyph-inline', timeout=10000)
+        page.click('#settings-close')
         tbl = page.evaluate("""() => {
           const sunCell = document.querySelector('#panel-table tbody tr td.body');
           const lonCell = document.querySelector('#panel-table tbody tr td.num');

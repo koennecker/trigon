@@ -16,7 +16,7 @@ for base in ["https://464bf9fb.trigon.pages.dev", "https://trigon.pages.dev"]:
         pg.goto(base + "/", wait_until="networkidle")
         ok = pg.evaluate("""() => new Promise(res => {
           const t = setInterval(() => {
-            const size = document.querySelector('#size-toggle');
+            const size = document.querySelector('[data-set-size="compact"]');
             const trs = document.querySelectorAll('#panel-table .csv-block table tbody tr');
             if (size && trs.length >= 15) { clearInterval(t); res({
               size: size.textContent, glow: !!document.querySelector('.mag-glow'),

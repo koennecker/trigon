@@ -144,7 +144,8 @@ try:
             return page.eval_on_selector(f'button[data-v="{v}"]', "b => b.classList.contains('on')")
 
         def set_details(open):
-            page.eval_on_selector("details#sky-opts", f"d => d.open = {str(open).lower()}")
+            # Sky options live in the settings modal now.
+            page.evaluate(f"document.getElementById('{'settings-open' if open else 'settings-close'}').click()")
             page.wait_for_timeout(300)
 
         # --- view mode buttons exist

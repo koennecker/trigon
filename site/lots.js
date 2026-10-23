@@ -427,23 +427,29 @@ const OPTION_DEFS = [
 ];
 
 /**
+ * Checkbox markup for the lot options (the Table section of the
+ * settings modal; pure string builder).
+ * @param {LotOptions} [opts] current option states
+ * @returns {string}
+ */
+export function buildLotOptionsHTML(opts) {
+  const o = Object.assign({ ...DEFAULT_LOT_OPTIONS }, opts);
+  return OPTION_DEFS.map(([k, label]) =>
+    `<label><input type="checkbox" class="lots-opt" data-opt="${k}"${o[k] ? ' checked' : ''}> ${label}</label>`).join('');
+}
+
+/**
  * HTML for the lots section of the Table tab (pure string builder).
  * @param {LotsResult} result
  * @param {string} [fmt] angle format ('dms' or 'dec')
- * @param {LotOptions} [opts] current option states (checkbox rendering)
  * @returns {string}
  */
-export function buildLotsHTML(result, fmt = 'dms', opts) {
-  const o = Object.assign({ ...DEFAULT_LOT_OPTIONS }, opts);
+export function buildLotsHTML(result, fmt = 'dms') {
   const { sect, sunAlt, values } = result;
   const note = sect === 'day'
     ? `Day chart — Sun ${Math.abs(sunAlt).toFixed(1)}° above the horizon, so the day formulas apply.`
     : `Night chart — Sun ${Math.abs(sunAlt).toFixed(1)}° below the horizon, so the night formulas apply.`;
   let html = `<div class="lots" id="lots-section"><h3>Hermetic lots</h3>`
-    + `<div class="lots-opts">`
-    + OPTION_DEFS.map(([k, label]) =>
-        `<label><input type="checkbox" class="lots-opt" data-opt="${k}"${o[k] ? ' checked' : ''}> ${label}</label>`).join('')
-    + `</div>`
     + `<p class="lots-note">${note} Each lot is A + B − C measured from the Ascendant.</p>`;
   for (const n of result.notes) html += `<p class="lots-note">${n}</p>`;
   html += `<div class="csv-block">${csvDownloadButton('trigon-lots.csv')}<div class="tbl-scroll"><table class="lots-table"><thead><tr>`

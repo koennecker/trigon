@@ -224,10 +224,6 @@ export function buildLordshipHTML(out, lots, opts) {
   const { planets } = computeLordships(out, lots, opts);
   const sect = opts.isDay ? 'day' : 'night';
   let html = `<div class="lords" id="lords-section"><h3>Lordship deep dive</h3>`
-    + `<div class="lords-opts"><label>Decan method <select class="decan-method">`
-    + `<option value="chaldean"${opts.decan === 'chaldean' ? ' selected' : ''}>Chaldean order (modulo)</option>`
-    + `<option value="indian"${opts.decan === 'indian' ? ' selected' : ''}>Indian (triplicity domicile sequence)</option>`
-    + `</select></label></div>`
     + `<p class="lots-note">${opts.isDay ? 'Day' : 'Night'} chart — Dorothean triplicity primaries follow the ${sect} lord. `
     + `Counts are planets/points lorded per dimension (triplicity by primary lord only; a planet counts as lord `
     + `over itself — its own domicile, decan, bound and so on are strength, not a null); `

@@ -24,9 +24,10 @@ export function parseStyleNum(raw, allowZero) {
   return (Number.isFinite(v) && (v > 0 || (v === 0 && allowZero))) ? v : null;
 }
 
-/** Panel markup for a resolved style. Pure. */
+/** Panel markup for a resolved style (the Chart section of the settings
+ * modal). Pure. */
 export function buildChartStyleHTML(style) {
-  let h = '<details class="chart-style"><summary>Customize chart</summary>';
+  let h = '<div class="chart-style">';
   for (const sec of CHART_STYLE_SECTIONS) {
     h += `<div class="cs-sec"><h4>${sec.title}</h4>`;
     for (const p of sec.params) {
@@ -38,7 +39,7 @@ export function buildChartStyleHTML(style) {
     }
     h += '</div>';
   }
-  h += '<button id="cs-reset" class="ghost" type="button">Reset to defaults</button></details>';
+  h += '<button id="cs-reset" class="ghost" type="button">Reset to defaults</button></div>';
   return h;
 }
 

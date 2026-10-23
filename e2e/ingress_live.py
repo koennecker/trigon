@@ -49,7 +49,7 @@ try:
         pg.evaluate("window.__trigonSetTime('dt', 12, 0, 0)")
         pg.click("#calc")
         pg.wait_for_selector("#panel-table #lots-section", timeout=120000)
-        opts = pg.inner_text("#lots-section .lots-opts")
+        opts = pg.evaluate("document.getElementById('set-lots-opts').textContent")
         assert "Nechepso/Valens; cf. Serapio" in opts, opts
         print("lots label live:", opts.splitlines()[0])
         assert not cerr and not perr, f"errors: {cerr[:2]} {perr[:2]}"

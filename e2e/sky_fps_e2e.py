@@ -12,6 +12,18 @@ SITE = harness.site_dir()
 PORT = 8139
 
 results = []
+
+def open_settings(pg):
+    if pg.locator("#input-card.open").count() == 0:
+        pg.locator("#input-fab").click(timeout=8000)
+        pg.wait_for_selector("#input-card.open", timeout=8000)
+    pg.click("#settings-open")
+    pg.wait_for_selector("#settings-modal:not([hidden])", timeout=8000)
+
+def close_settings(pg):
+    pg.click("#settings-close")
+    pg.wait_for_selector("#settings-modal[hidden]", state="attached", timeout=8000)
+
 def check(name, ok, detail=""):
     results.append((name, ok, detail))
     print(("PASS " if ok else "FAIL ") + name + (f" — {detail}" if detail else ""))
@@ -60,9 +72,7 @@ try:
         page.wait_for_timeout(1500)
         check("sky renders (observer)", sky_nonblank())
 
-        summary = page.text_content("#sky-opts summary")
-        check("panel renamed to Options", (summary or "").strip() == "Options", summary)
-        page.click("#sky-opts summary")
+        open_settings(page)
         page.wait_for_selector("#sky-fps", state="attached")
         check("Max FPS select present", True)
         page.select_option("#sky-fps", "30")
@@ -84,7 +94,7 @@ try:
         page.reload(wait_until="networkidle")
         page.click('[data-tab="sky"]')
         page.wait_for_selector("#sky-canvas canvas", timeout=60000)
-        page.click("#sky-opts summary")
+        open_settings(page)
         page.wait_for_selector("#sky-fps", state="attached")
         check("maxFps restored after reload", page.input_value("#sky-fps") == "30",
               page.input_value("#sky-fps"))

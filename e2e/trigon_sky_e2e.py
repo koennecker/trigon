@@ -30,6 +30,18 @@ def check(name, cond, extra=""):
         fails.append(name)
 
 
+def open_settings(pg):
+    if pg.locator("#settings-modal:not([hidden])").count():
+        return
+    if pg.locator("#input-card.open").count() == 0:
+        pg.locator("#input-fab").click(timeout=8000)
+        pg.wait_for_selector("#input-card.open", timeout=8000)
+    pg.click("#settings-open")
+    pg.wait_for_selector("#settings-modal:not([hidden])", timeout=8000)
+
+def close_settings(pg):
+    pg.click("#settings-close")
+    pg.wait_for_selector("#settings-modal[hidden]", state="attached", timeout=8000)
 def norm360(d):
     return d % 360
 
@@ -116,9 +128,10 @@ def run_desktop(pw, browser):
         checked = page.evaluate(MOON_LBL + ".querySelector('input').checked")
         check("Moon's orbit on by default", checked)
 
-    page.click("details#sky-opts summary")
+    open_settings(page)
     page.wait_for_selector('#sky-overlays button[data-v="sphere"]', state="visible")
     page.click('#sky-overlays button[data-v="sphere"]')
+    close_settings(page)
     page.wait_for_timeout(1500)
     page.screenshot(path=SHOT + "shot_sky_nodes.png")
     print("  saved shot_sky_nodes.png", flush=True)
@@ -164,9 +177,10 @@ def run_mobile(pw, browser):
     page.wait_for_function("window.__skyBodyState && window.__skyBodyState().length === 12",
                            timeout=45000)
     page.wait_for_timeout(1500)
-    page.click("details#sky-opts summary")
+    open_settings(page)
     page.wait_for_selector('#sky-overlays button[data-v="sphere"]', state="visible")
     page.click('#sky-overlays button[data-v="sphere"]')
+    close_settings(page)
     page.wait_for_timeout(1500)
     page.screenshot(path=SHOT + "shot_sky_mobile.png")
     print("  saved shot_sky_mobile.png", flush=True)

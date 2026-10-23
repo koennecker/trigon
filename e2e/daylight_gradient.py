@@ -50,10 +50,12 @@ try:
         pg.locator('#views .tabs button[data-tab="sky"]').click(timeout=15000)
         pg.wait_for_selector("#sky-wrap canvas", timeout=90000)
         # daylight must be on: sunAlt (and the 'Sun' readout segment) only exists then
-        if pg.locator("#sky-opts[open]").count() == 0:
-            pg.locator("#sky-opts summary").click(timeout=8000)
+        if pg.locator("#settings-modal:not([hidden])").count() == 0:
+            if pg.locator("#input-card.open").count() == 0:
+                pg.locator("#input-fab").click(timeout=8000)
+            pg.locator("#settings-open").click(timeout=8000)
         pg.get_by_label("Realistic daylight").check(timeout=8000)
-        pg.locator("#sky-opts summary").click(timeout=8000)  # close: it would darken the pixel sample
+        pg.locator("#settings-close").click(timeout=8000)  # close: it would darken the pixel sample
         pg.wait_for_function("document.getElementById('sky-readout').textContent.includes('Sun')", timeout=60000)
 
         from PIL import Image

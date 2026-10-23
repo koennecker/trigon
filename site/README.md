@@ -140,9 +140,13 @@ up the same way.
 - `loader.js` — the download loading animation (zodiac glyph morph),
   shown only while uncached data downloads; owns its armed flag, which
   the run path sets per calculation (live ticks never arm it).
-- `chart-style.js` — the Customize-chart panel and its persisted
+- `chart-style.js` — the chart style controls and their persisted
   overrides (`astroweb-chart-style` in localStorage), generated from
-  the `chart.js` style descriptors.
+  the `chart.js` style descriptors. The controls render in the Chart
+  section of the settings modal (gear button in the input drawer head;
+  the modal's Table section holds the angle format/size, glyphs,
+  decan and lot options, its Sky section the sky overlay controls),
+  which `app.js` builds and wires at startup.
 - `chart-tooltip.js` — chart point hover/focus tooltips: delegated
   panel events, element lifecycle, edge-aware positioning. The data
   comes from `table.js` `pointTooltip`, assembled by `app.js` (station

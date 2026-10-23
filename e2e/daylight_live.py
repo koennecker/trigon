@@ -62,8 +62,10 @@ def canvas_stats(pg, shot_path):
     return (r + g + b) / 3, r, g, b
 
 def open_sky_opts(pg):
-    if pg.locator("#sky-opts[open]").count() == 0:
-        real_click(pg, "#sky-opts summary")
+    if pg.locator("#settings-modal:not([hidden])").count() == 0:
+        if pg.locator("#input-card.open").count() == 0:
+            real_click(pg, "#input-fab")
+        real_click(pg, "#settings-open")
         pg.wait_for_timeout(400)
 
 cerr, perr = [], []
@@ -109,13 +111,13 @@ with sync_playwright() as p:
         open_sky_opts(pg)
         real_click(pg, "label:has-text('Realistic daylight')")
         pg.wait_for_timeout(1200)
-        real_click(pg, "#sky-opts summary"); pg.wait_for_timeout(600)
+        real_click(pg, "#settings-close"); pg.wait_for_timeout(600)
         mean, r, g, b = canvas_stats(pg, f"{SHOT}/live_toggle_off.png")
         check("live toggle off dark", mean < 60, f"mean {mean:.0f}")
         open_sky_opts(pg)
         real_click(pg, "label:has-text('Realistic daylight')")
         pg.wait_for_timeout(1200)
-        real_click(pg, "#sky-opts summary"); pg.wait_for_timeout(600)
+        real_click(pg, "#settings-close"); pg.wait_for_timeout(600)
         mean, r, g, b = canvas_stats(pg, f"{SHOT}/live_toggle_on.png")
         check("live toggle on bright", mean > 90, f"mean {mean:.0f}")
     except Exception as e:
@@ -125,7 +127,7 @@ with sync_playwright() as p:
         open_sky_opts(pg)
         real_click(pg, 'button[data-v="sphere"]')
         pg.wait_for_timeout(1500)
-        real_click(pg, "#sky-opts summary"); pg.wait_for_timeout(600)
+        real_click(pg, "#settings-close"); pg.wait_for_timeout(600)
         mean, r, g, b = canvas_stats(pg, f"{SHOT}/live_sphere.png")
         check("live sphere dark", mean < 60, f"mean {mean:.0f}")
     except Exception as e:

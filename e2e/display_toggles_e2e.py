@@ -14,6 +14,19 @@ def check(label, cond, detail=""):
     print(("PASS " if cond else "FAIL ") + label + (f" — {detail}" if detail else ""))
     if not cond: fails.append(label)
 
+def open_settings(page):
+    if page.locator("#input-card.open").count() == 0:
+        page.locator("#input-fab").click(timeout=8000)
+        page.wait_for_selector("#input-card.open", timeout=8000)
+    page.click("#settings-open")
+    page.wait_for_selector("#settings-modal:not([hidden])", timeout=8000)
+
+def close_settings(page):
+    page.click("#settings-close")
+    page.wait_for_selector("#settings-modal[hidden]", state="attached", timeout=8000)
+
+
+
 try:
     with sync_playwright() as p:
         browser = harness.launch(p)
@@ -70,17 +83,21 @@ try:
         check("D is green", cols["dirCls"] == "direct" and cols["dirColor"] == "rgb(63, 185, 80)", json.dumps(cols))
         check("magnitude tooltips give brightness percentile", cols["magTips"])
 
-        # Compact on: the leading pair only — no row shows all three units.
-        page.click("#size-toggle")
-        page.wait_for_function("""() => document.querySelector('#size-toggle').textContent.includes('compact')""", timeout=30000)
+        # Compact on (via the settings modal): leading pair only.
+        open_settings(page)
+        page.click('[data-set-size="compact"]')
+        page.wait_for_function("""() => document.querySelector('[data-set-size="compact"]').getAttribute('aria-pressed') === 'true'""", timeout=30000)
+        close_settings(page)
         lons = page.evaluate("""() => [...document.querySelector('#panel-table .csv-block table').querySelectorAll('tbody tr')]
           .map(tr => tr.children[1].textContent)""")
         check("compact: no longitude shows degrees+minutes+seconds together",
               all(not ("°" in l and "″" in l) for l in lons), json.dumps(lons[:3]))
 
-        # Glyphs on.
-        page.click("#glyph-toggle")
+        # Glyphs on (via the settings modal).
+        open_settings(page)
+        page.click('[data-set-glyphs="glyphs"]')
         page.wait_for_function("""() => document.querySelector('#panel-table .csv-block table').querySelector('tbody tr').children[0].textContent.includes('☉')""", timeout=30000)
+        close_settings(page)
         g = page.evaluate("""() => {
           const trs = [...document.querySelector('#panel-table .csv-block table').querySelectorAll('tbody tr')];
           return { body: trs[0].children[0].textContent, lon: trs[0].children[1].textContent,
@@ -93,10 +110,12 @@ try:
         # Persistence across reload.
         page.reload(wait_until="networkidle")
         page.wait_for_selector("#panel-table .csv-block table tbody tr", timeout=60000)
+        open_settings(page)
         kept = page.evaluate("""() => ({
-          size: document.querySelector('#size-toggle').getAttribute('aria-pressed'),
-          gly: document.querySelector('#glyph-toggle').getAttribute('aria-pressed') })""")
+          size: document.querySelector('[data-set-size="compact"]').getAttribute('aria-pressed'),
+          gly: document.querySelector('[data-set-glyphs="glyphs"]').getAttribute('aria-pressed') })""")
         check("both toggles persist across reload", kept == {"size": "true", "gly": "true"}, json.dumps(kept))
+        close_settings(page)
         check("zero console errors", errors == [], str(errors[:3]))
         page.screenshot(path="/tmp/display_toggles.png")
         browser.close()

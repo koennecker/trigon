@@ -123,6 +123,18 @@ def sky_body_lonlat(page, name):
     b = next(x for x in bs if x["name"] == name)
     return b["lon"], b["lat"]
 
+
+def open_settings(pg):
+    if pg.locator("#input-card.open").count() == 0:
+        pg.locator("#input-fab").click(timeout=8000)
+        pg.wait_for_selector("#input-card.open", timeout=8000)
+    pg.click("#settings-open")
+    pg.wait_for_selector("#settings-modal:not([hidden])", timeout=8000)
+
+def close_settings(pg):
+    pg.click("#settings-close")
+    pg.wait_for_selector("#settings-modal[hidden]", state="attached", timeout=8000)
+
 def open_drawer(pg):
     """Open the side drawer and wait out its slide-in transition."""
     pg.click("#input-fab")
@@ -225,7 +237,7 @@ try:
         if tip: print("    tip:", tip.replace("\n", " | ")[:200])
 
         # --- overlay toggles: nakshatras + xiu
-        page.click("#sky-opts summary")
+        open_settings(page)
         page.check('#sky-overlays input >> nth=5')   # nakshatra
         page.check('#sky-overlays input >> nth=6')   # xiu
         page.wait_for_timeout(900)
@@ -238,14 +250,14 @@ try:
         page.check('#sky-overlays input >> nth=12')  # galactic
         page.check('#sky-overlays input >> nth=13')  # graticule
         page.check('#sky-overlays input >> nth=14')  # poles
-        page.click("#sky-opts summary")
+        close_settings(page)
         page.wait_for_timeout(900)
         page.screenshot(path=f"{SHOT}/shot_sky_circles.png")
 
         # --- celestial equator overlay (fixed construction: was fed xyz as az/alt)
-        page.click("#sky-opts summary")
+        open_settings(page)
         page.check('#sky-overlays input >> nth=8')   # equator
-        page.click("#sky-opts summary")
+        close_settings(page)
         page.wait_for_timeout(900)
         page.screenshot(path=f"{SHOT}/shot_sky_equator.png")
 

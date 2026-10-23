@@ -55,7 +55,7 @@ try:
         page.wait_for_selector("#sky-canvas canvas", timeout=60000)
         page.wait_for_function(
             "document.getElementById('sky-readout').textContent.includes('UTC')", timeout=90000)
-        page.click("#sky-opts summary")
+        page.evaluate("document.getElementById('settings-open').click()")
         page.wait_for_selector("#sky-locksel", timeout=10000)
         check("live: sky lock picker present",
               page.eval_on_selector_all("#sky-locksel option", "els => els.length") == 13)

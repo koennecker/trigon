@@ -228,14 +228,48 @@
   #sky-readout { position: absolute; left: 10px; bottom: 8px; z-index: 4; max-width: calc(100% - 20px); font-size: 12px; color: #8b949e; background: rgba(13,17,23,.72); padding: 4px 8px; border-radius: 4px; pointer-events: none; }
   #sky-readout b { color: #e6edf3; font-weight: 600; }
   #sky-loading { display: none; position: absolute; inset: 0; z-index: 6; align-items: center; justify-content: center; background: rgba(4,6,12,.72); color: #e6edf3; font-size: 14px; }
-  /* Absolutely positioned, so width is shrink-to-fit: cap it at the wrap
-     and paint above the fullscreen button (z 6) so the open panel never
-     has its checkboxes blocked by it. */
-  #sky-opts { position: absolute; top: 8px; right: 8px; z-index: 7; max-width: calc(100% - 16px); background: rgba(13,17,23,.9); border: 1px solid #30363d; border-radius: 6px; font-size: 13px; }
-  #sky-opts summary { cursor: pointer; padding: 6px 10px; color: #e6edf3; }
-  #sky-overlays { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; padding: 4px 10px 10px; max-height: 46vh; overflow: auto; }
+  #sky-overlays { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; }
   #sky-overlays label { display: flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer; }
   #sky-overlays input { width: auto; margin: 0; flex: 0 0 auto; accent-color: #58a6ff; }
+  /* Unified settings modal (gear in the drawer head): table, chart and
+     sky settings live here. */
+  #settings-open {
+    margin: 0 2px 0 auto; padding: 2px 8px; background: transparent; border: none;
+    color: #8b949e; font-size: 17px; line-height: 1; cursor: pointer;
+  }
+  #settings-open:hover { color: #e6edf3; }
+  #settings-modal {
+    position: fixed; inset: 0; z-index: 80; display: flex;
+    align-items: flex-start; justify-content: center; padding: 4vh 12px 12px;
+    background: rgba(1,4,8,.62);
+  }
+  #settings-modal[hidden] { display: none; }
+  .settings-card {
+    width: min(600px, 100%); max-height: 92dvh; overflow-y: auto; overscroll-behavior: contain;
+    background: #0d1117; border: 1px solid #30363d; border-radius: 10px;
+    padding: 0 18px 18px; box-shadow: 0 12px 40px rgba(0,0,0,.55);
+  }
+  .settings-head {
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 1; background: #0d1117;
+    padding: 14px 0 8px; margin-bottom: 4px;
+  }
+  .settings-head h2 { font-size: 17px; margin: 0; }
+  #settings-close {
+    margin: 0; padding: 2px 10px; background: transparent; border: none;
+    color: #8b949e; font-size: 20px; line-height: 1; cursor: pointer;
+  }
+  #settings-close:hover { color: #e6edf3; }
+  .set-sec { border-top: 1px solid #21262d; padding: 10px 0 4px; margin-top: 10px; }
+  .set-sec > h3 { font-size: 14px; margin: 0 0 8px; color: #e6edf3; }
+  .set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0; }
+  .set-row > span, .set-row > label { color: #c9d1d9; font-size: 13.5px; }
+  .set-row select { width: auto; min-width: 0; }
+  .set-checks { display: grid; grid-template-columns: 1fr; gap: 4px; padding: 4px 0; }
+  .set-checks label { display: flex; align-items: flex-start; gap: 6px; cursor: pointer; font-size: 13px; color: #c9d1d9; }
+  .set-checks input { width: auto; margin: 2px 0 0; flex: 0 0 auto; accent-color: #58a6ff; }
+  .set-sub { font-size: 12.5px; color: #8b949e; margin: 8px 0 2px; }
+  .settings-card .chart-style { border-top: none; margin-top: 0; padding-top: 0; }
   .sky-viewrow { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; padding: 2px 0 6px; border-bottom: 1px solid #21262d; margin-bottom: 4px; }
   .sky-viewrow span { color: #8b949e; }
   .sky-viewrow button { background: #0d1117; color: #8b949e; border: 1px solid #30363d; border-radius: 4px; padding: 3px 12px; font-size: 12px; cursor: pointer; }
@@ -311,8 +345,6 @@
   .csv-btn:hover:not(:disabled) { background: #21262d; border-color: #3fb950; }
   /* Dignity columns, lunations, lordship deep dive. */
   #panel-table .stn-prev, #panel-table .stn-next { white-space: normal; min-width: 9em; }
-  .lords-opts { margin-bottom: 6px; }
-  .lords-opts select { width: auto; }
   .lord-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 10px; margin-top: 10px; }
   .lord-card { border: 1px solid #21262d; border-radius: 8px; padding: 10px 12px; }
   .lord-card h4 { margin: 0 0 6px; font-size: 14px; }
@@ -324,9 +356,6 @@
   #panel-aspects h3, #panel-stations h3, #panel-ingresses h3 { font-size: 14px; margin: 18px 0 4px; color: #e6edf3; }
   /* Hermetic lots section in the Table tab. */
   #panel-table h3 { font-size: 14px; margin: 18px 0 4px; color: #e6edf3; }
-  .lots-opts { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 6px 0 2px; }
-  .lots-opts label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #8b949e; cursor: pointer; }
-  .lots-opts input { width: auto; margin: 0; accent-color: #238636; }
   .lots-note { color: #8b949e; font-size: 13px; margin: 0 0 6px; }
   .cat-filter { width: 100%; box-sizing: border-box; margin: 4px 0 8px; }
   .cat-browser { max-height: 420px; overflow-y: auto; border: 1px solid #30363d; border-radius: 6px; padding: 6px 10px; }
@@ -422,7 +451,6 @@
     .res-brand { font-size: 17px; }
     /* Results header: stack controls */
     .results-head { flex-direction: column; align-items: stretch; gap: 8px; }
-    .results-head .seg { align-self: flex-start; }
     #share { margin: 0; align-self: stretch; text-align: center; }
     /* Angles: tighter */
     .angles { gap: 14px; margin-bottom: 8px; }
@@ -509,8 +537,7 @@
     /* Sky viewer chrome: the overlays panel is absolutely positioned, so it
        sizes shrink-to-fit — cap it at the wrap and drop to a single column
        so long labels wrap instead of blowing past the viewport edge. */
-    #sky-opts { top: 6px; right: 6px; max-width: calc(100% - 12px); }
-    #sky-overlays { grid-template-columns: minmax(0, 1fr); max-height: 52dvh; }
+    #sky-overlays { grid-template-columns: minmax(0, 1fr); }
     #sky-overlays label { white-space: normal; }
     .sky-viewrow { flex-wrap: wrap; }
     /* Fullscreen button to bottom-right: clear of the opts panel in every
@@ -528,6 +555,7 @@
 <aside class="card" id="input-card" aria-label="Input panel">
   <div id="drawer-head">
     <span id="drawer-title">Inputs</span>
+    <button id="settings-open" type="button" aria-label="Settings" aria-haspopup="dialog" title="Settings">&#x2699;&#xFE0E;</button>
     <button id="input-hide" type="button" aria-label="Hide input panel">&times;</button>
   </div>
     <div class="field">
@@ -660,7 +688,6 @@
         <div id="sky-tip"></div>
         <div id="sky-readout"></div>
         <div id="sky-loading"></div>
-        <details id="sky-opts"><summary>Options</summary><div id="sky-overlays"></div></details>
       </div>
     </div>
     <div id="panel-aspects" role="tabpanel" style="display:none">
@@ -912,6 +939,47 @@
   </footer>
 </main>
 <button id="input-fab" type="button" aria-controls="input-card" aria-expanded="false" aria-label="Show input panel">&#9776;</button>
+<div id="settings-modal" hidden role="dialog" aria-modal="true" aria-labelledby="settings-title">
+  <div class="settings-card">
+    <div class="settings-head">
+      <h2 id="settings-title">Settings</h2>
+      <button id="settings-close" type="button" aria-label="Close settings">&times;</button>
+    </div>
+    <section class="set-sec" aria-labelledby="set-table-h">
+      <h3 id="set-table-h">Table</h3>
+      <div class="set-row"><span>Angle format</span>
+        <span class="seg" role="group" aria-label="Angle format">
+          <button type="button" data-set-fmt="dms" aria-pressed="true">12&deg;34&prime;56&Prime;</button>
+          <button type="button" data-set-fmt="dec" aria-pressed="false">12.5822&deg;</button>
+        </span></div>
+      <div class="set-row"><span>Angle size</span>
+        <span class="seg" role="group" aria-label="Angle size">
+          <button type="button" data-set-size="full" aria-pressed="true">Full</button>
+          <button type="button" data-set-size="compact" aria-pressed="false">Compact</button>
+        </span></div>
+      <div class="set-row"><span>Planets and signs</span>
+        <span class="seg" role="group" aria-label="Planets and signs display">
+          <button type="button" data-set-glyphs="names" aria-pressed="true">Names</button>
+          <button type="button" data-set-glyphs="glyphs" aria-pressed="false">Glyphs</button>
+        </span></div>
+      <div class="set-row"><label for="set-decan">Decan method</label>
+        <select id="set-decan" class="decan-method">
+          <option value="chaldean">Chaldean order (modulo)</option>
+          <option value="indian">Indian (triplicity domicile sequence)</option>
+        </select></div>
+      <p class="set-sub">Hermetic lots</p>
+      <div class="set-checks" id="set-lots-opts"></div>
+    </section>
+    <section class="set-sec" aria-labelledby="set-chart-h">
+      <h3 id="set-chart-h">Chart</h3>
+      <div id="settings-chart"></div>
+    </section>
+    <section class="set-sec" aria-labelledby="set-sky-h">
+      <h3 id="set-sky-h">Sky</h3>
+      <div id="sky-overlays"><p class="hint-panel">Sky options load with the Sky view.</p></div>
+    </section>
+  </div>
+</div>
 <div id="scrim" hidden></div>
 <script src="./vendor/tz.min.js"></script>
 <script type="module" src="./app.js"></script>

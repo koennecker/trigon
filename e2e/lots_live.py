@@ -46,7 +46,10 @@ try:
             .find(tr => tr.children[0].textContent.trim() === 'Fortune');
           return !!tr && tr.children[1].textContent.includes('Aries 26°44');
         }""", timeout=120000)
-        pg.click('#lots-section input[data-opt="valensMoon"]')
+        pg.click("#settings-open")
+        pg.wait_for_selector("#settings-modal:not([hidden])", timeout=8000)
+        pg.click('#set-lots-opts input[data-opt="valensMoon"]')
+        pg.click("#settings-close")
         pg.wait_for_function("""() => {
           const tr = [...document.querySelectorAll('#lots-section tbody tr')]
             .find(tr => tr.children[0].textContent.trim() === 'Fortune');

@@ -6,7 +6,7 @@ import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createEpheClient, computeChart } from '../ephe.js';
-import { computeLots, sunAltitudeDeg, moonAltitudeDeg, pointAltitudeDeg, buildLotsHTML, HERMETIC_LOTS, readLotOptions, writeLotOptions } from '../lots.js';
+import { computeLots, sunAltitudeDeg, moonAltitudeDeg, pointAltitudeDeg, buildLotsHTML, buildLotOptionsHTML, HERMETIC_LOTS, readLotOptions, writeLotOptions } from '../lots.js';
 
 const LAT = 33.4484, LON = -112.0740; // Phoenix
 let mod, dayOut, nightOut, moonDownOut, moonUpOut, basisOut;
@@ -164,11 +164,13 @@ describe('conditional modifiers (vs proto/lots_modifiers_proto.py)', () => {
   });
 
   it('renders option checkboxes in their persisted state', () => {
-    const html = buildLotsHTML(computeLots(nightOut, nightMs, LAT, LON), 'dms',
+    const html = buildLotOptionsHTML(
       { valensMoon: true, ptolemyFortune: false, valensBasis: false, valensErosNec: false });
     assert.ok(html.includes('data-opt="valensMoon" checked'));
     assert.ok(html.includes('Nechepso/Valens; cf. Serapio'));
     assert.ok(html.includes('data-opt="ptolemyFortune">') || html.includes('data-opt="ptolemyFortune"'));
+    const section = buildLotsHTML(computeLots(nightOut, nightMs, LAT, LON), 'dms');
+    assert.ok(!section.includes('lots-opt'), 'options no longer render inside the lots section');
   });
 });
 

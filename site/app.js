@@ -16,7 +16,7 @@ import { fmtLon, fmtCoord, fmtSignPos, readAngleFmt, writeAngleFmt, rowsToCSV, g
   readGlyphsPref, writeGlyphsPref, readAngleMode, writeAngleMode } from './format.js';
 import { parseShareHashString, shareLink, shareLinks } from './share.js';
 import { tableRows, buildTableHTML, speedIndicatorHTML, angleRows, pointTooltip, swapGlyphChars } from './table.js';
-import { computeLots, buildLotsHTML, readLotOptions, writeLotOptions, sunAltitudeDeg,
+import { computeLots, buildLotsHTML, buildLotOptionsHTML, readLotOptions, writeLotOptions, sunAltitudeDeg,
   computeCatalogLots, buildCatalogHTML, buildCatalogSelectedHTML, readCatalogSelection, writeCatalogSelection } from './lots.js';
 import {
   buildSyzygyHTML, buildLordshipHTML, readDignityOpts, writeDignityOpts,
@@ -229,6 +229,7 @@ function setAngleFmt(f) {
   if (f !== 'dms' && f !== 'dec') return;
   angleFmt = f;
   writeAngleFmt(safeStorage, f);
+  syncSettingsUI();
   if (S.out) renderResults(S.out, S.meta);
 }
 
@@ -259,7 +260,7 @@ $('panel-table').addEventListener('click', e => {
   if (b) gotoSearchInstant(parseFloat(b.dataset.gotoJd));
 });
 
-$('panel-table').addEventListener('change', e => {
+document.addEventListener('change', e => {
   const t = e.target;
   if (t.classList && t.classList.contains('cat-sel')) {
     const id = t.dataset.id;
@@ -281,7 +282,7 @@ $('panel-table').addEventListener('change', e => {
   const el = document.querySelector('#panel-table #lots-section');
   if (el && S.out && S.inp && S.instantMs != null) {
     el.outerHTML = buildLotsHTML(
-      computeLots(S.out, S.instantMs, S.inp.lat, S.inp.lon, lotsOpts), effFmt(), lotsOpts);
+      computeLots(S.out, S.instantMs, S.inp.lat, S.inp.lon, lotsOpts), effFmt());
   }
 });
 
@@ -434,7 +435,7 @@ function renderResults(out, meta, outerOuts = []) {
     ? computeCatalogLots(out, S.instantMs, S.inp.lat, S.inp.lon, lotsOpts, catalogSelection, S.syzygyLon) : null;
   $('panel-table').innerHTML = buildTableHTML(out, effFmt(), dig, { glyphs: glyphsOn, angleMode })
     + buildSyzygyHTML(null)
-    + (lotsRes ? buildLotsHTML(lotsRes, effFmt(), lotsOpts) : '')
+    + (lotsRes ? buildLotsHTML(lotsRes, effFmt()) : '')
     + (catRes ? buildCatalogHTML(catRes.values, catalogSelection, effFmt()) : '')
     + buildLordshipHTML(out, [...(lotsRes ? lotsRes.values : []), ...(catRes ? catRes.values.filter(v => v.lon != null) : [])], dig);
   $('panel-chart').innerHTML =
@@ -442,30 +443,16 @@ function renderResults(out, meta, outerOuts = []) {
     + `<div class="chart-cap">Whole-sign houses \u00B7 1st house = Ascendant\u2019s sign `
     + `\u00B7 Ptolemaic aspects, 3\u00B0 orb \u00B7 true node axis `
     + `<button id="dbgcopy" class="ghost" type="button" title="Copy chart debug state as JSON">Copy debug</button></div>`
-    + chartStyleApi.html();
+    ;
   $('views').dataset.ready = '1';
   // Mobile: scroll results into view (input card is above the fold).
   if (window.matchMedia('(max-width: 640px)').matches) {
     requestAnimationFrame(() => $('views').scrollIntoView({ block: 'start' }));
   }
-  $('panel-table').querySelectorAll('.seg button').forEach(b =>
-    b.addEventListener('click', () => setAngleFmt(b.dataset.fmt)));
   const shareBtn = $('panel-table').querySelector('#share');
   if (shareBtn) shareBtn.addEventListener('click', shareChart);
-  const sizeBtn = $('panel-table').querySelector('#size-toggle');
-  if (sizeBtn) sizeBtn.addEventListener('click', () => {
-    angleMode = angleMode === 'compact' ? 'full' : 'compact';
-    writeAngleMode(safeStorage, angleMode);
-    renderResults(S.out, S.meta);
-  });
-  const glyphBtn = $('panel-table').querySelector('#glyph-toggle');
-  if (glyphBtn) glyphBtn.addEventListener('click', () => {
-    glyphsOn = !glyphsOn; writeGlyphsPref(safeStorage, glyphsOn);
-    renderResults(S.out, S.meta);
-  });
   const dbgBtn = $('panel-chart').querySelector('#dbgcopy');
   if (dbgBtn) dbgBtn.addEventListener('click', copyDebug);
-  chartStyleApi.wire($('panel-chart'));
   maybeRefreshExtras(true);
 }
 
@@ -760,7 +747,7 @@ function updateLiveResults(out, stamp) {
   const lotsEl = document.querySelector('#panel-table #lots-section');
   if (lotsEl && S.inp && S.instantMs != null) {
     const lh = buildLotsHTML(
-      computeLots(out, S.instantMs, S.inp.lat, S.inp.lon, lotsOpts), effFmt(), lotsOpts);
+      computeLots(out, S.instantMs, S.inp.lat, S.inp.lon, lotsOpts), effFmt());
     if (lh !== lastLotsHTML) { lotsEl.outerHTML = lh; lastLotsHTML = lh; }
   }
   // The selected catalog lots likewise (the browser DOM stays untouched).
@@ -961,6 +948,64 @@ const chartStyleApi = createChartStyle({
   storage: safeStorage,
   onChange: () => rerenderChartSVG(),
 });
+
+// ---------------------------------------------------------------- settings
+// One modal (gear button in the drawer head) holds the table, chart and
+// sky settings. The controls are static DOM wired once here; their state
+// lives in the same vars/prefs the renderers already read, and
+// syncSettingsUI() reflects that state back into the controls.
+function syncSettingsUI() {
+  const modal = $('settings-modal');
+  if (!modal) return;
+  modal.querySelectorAll('[data-set-fmt]').forEach(b =>
+    b.setAttribute('aria-pressed', String(b.dataset.setFmt === angleFmt)));
+  modal.querySelectorAll('[data-set-size]').forEach(b =>
+    b.setAttribute('aria-pressed', String(b.dataset.setSize === angleMode)));
+  modal.querySelectorAll('[data-set-glyphs]').forEach(b =>
+    b.setAttribute('aria-pressed', String((b.dataset.setGlyphs === 'glyphs') === glyphsOn)));
+  const dec = $('set-decan');
+  if (dec) dec.value = digOpts.decan;
+}
+{
+  const modal = $('settings-modal');
+  $('set-lots-opts').innerHTML = buildLotOptionsHTML(lotsOpts);
+  $('settings-chart').innerHTML = chartStyleApi.html();
+  chartStyleApi.wire(modal);
+  modal.querySelectorAll('[data-set-fmt]').forEach(b =>
+    b.addEventListener('click', () => setAngleFmt(b.dataset.setFmt)));
+  modal.querySelectorAll('[data-set-size]').forEach(b =>
+    b.addEventListener('click', () => {
+      angleMode = b.dataset.setSize === 'compact' ? 'compact' : 'full';
+      writeAngleMode(safeStorage, angleMode);
+      syncSettingsUI();
+      if (S.out) renderResults(S.out, S.meta);
+    }));
+  modal.querySelectorAll('[data-set-glyphs]').forEach(b =>
+    b.addEventListener('click', () => {
+      glyphsOn = b.dataset.setGlyphs === 'glyphs';
+      writeGlyphsPref(safeStorage, glyphsOn);
+      syncSettingsUI();
+      if (S.out) renderResults(S.out, S.meta);
+    }));
+  syncSettingsUI();
+  const open = () => {
+    modal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    $('settings-close').focus();
+  };
+  const close = () => {
+    modal.hidden = true;
+    // Keep the scroll lock while the mobile drawer holds it (nav-open).
+    document.body.style.overflow = document.body.classList.contains('nav-open') ? 'hidden' : '';
+    $('settings-open').focus();
+  };
+  $('settings-open').addEventListener('click', open);
+  $('settings-close').addEventListener('click', close);
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !modal.hidden) close();
+  });
+}
 // Download loading animation (owns its armed flag and RAF state).
 const loader = createLoader({
   mount: html => { $('panel-table').innerHTML = html; },
@@ -1131,7 +1176,8 @@ function init() {
   $('input-fab').addEventListener('click', () =>
     setDrawerOpen(!$('input-card').classList.contains('open'), true));
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && $('input-card').classList.contains('open')) setDrawerOpen(false, true);
+    if (e.key === 'Escape' && $('input-card').classList.contains('open')
+        && $('settings-modal').hidden) setDrawerOpen(false, true);
   });
   try { setDrawerOpen(localStorage.getItem(DRAWER_KEY) === '1', false); } catch (e) {}
   // With a known location, compute immediately for this exact instant.

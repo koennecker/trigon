@@ -109,7 +109,13 @@ try:
 
         check("moon-down night: standard Fortune reversed",
               fortune_text().startswith("Aries 26°44′"), fortune_text())
-        pg.click('#lots-section input[data-opt="valensMoon"]')
+        if pg.locator("#input-card.open").count() == 0:
+            pg.locator("#input-fab").click(timeout=8000)
+            pg.wait_for_selector("#input-card.open", timeout=8000)
+        pg.click("#settings-open")
+        pg.wait_for_selector("#settings-modal:not([hidden])", timeout=8000)
+        pg.click('#set-lots-opts input[data-opt="valensMoon"]')
+        pg.click("#settings-close")
         pg.wait_for_function(
             "(() => { const tr = [...document.querySelectorAll('#lots-section tbody tr')]"
             ".find(tr => tr.children[0].textContent.trim() === 'Fortune');"
@@ -118,7 +124,7 @@ try:
         check("proviso on: Fortune unreversed (day formula)",
               fortune_text().startswith("Libra 0°58′"), fortune_text())
         notes = pg.evaluate("[...document.querySelectorAll('#lots-section .lots-note')].map(n => n.textContent)")
-        opts = pg.inner_text("#lots-section .lots-opts")
+        opts = pg.evaluate("document.getElementById('set-lots-opts').textContent")
         check("proviso checkbox carries the Nechepso/Valens + Serapio label",
               "Nechepso/Valens; cf. Serapio" in opts, opts)
         check("proviso note exposes the rule",
@@ -131,9 +137,15 @@ try:
             ".find(tr => tr.children[0].textContent.trim() === 'Fortune');"
             " return !!tr && tr.children[1].textContent.includes('Libra'); })()",
             timeout=90000)
-        stuck = pg.evaluate("document.querySelector('#lots-section input[data-opt=\"valensMoon\"]').checked")
+        stuck = pg.evaluate("document.querySelector('#set-lots-opts input[data-opt=\"valensMoon\"]').checked")
         check("proviso persists across recalculation", stuck is True and fortune_text().startswith("Libra"))
-        pg.click('#lots-section input[data-opt="valensMoon"]')
+        if pg.locator("#input-card.open").count() == 0:
+            pg.locator("#input-fab").click(timeout=8000)
+            pg.wait_for_selector("#input-card.open", timeout=8000)
+        pg.click("#settings-open")
+        pg.wait_for_selector("#settings-modal:not([hidden])", timeout=8000)
+        pg.click('#set-lots-opts input[data-opt="valensMoon"]')
+        pg.click("#settings-close")
         pg.wait_for_function(
             "(() => { const tr = [...document.querySelectorAll('#lots-section tbody tr')]"
             ".find(tr => tr.children[0].textContent.trim() === 'Fortune');"

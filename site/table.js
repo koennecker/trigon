@@ -275,12 +275,7 @@ export function speedIndicatorHTML(r) {
 export function buildTableHTML(out, fmt = 'dms', dig = undefined, opts = {}) {
   const glyphs = !!opts.glyphs;
   const angleMode = opts.angleMode === 'compact' ? 'compact' : 'full';
-  let html = `<div class="results-head"><div class="seg" role="group" aria-label="Angle format">`
-    + `<button type="button" data-fmt="dms" aria-pressed="${fmt !== 'dec'}">12°34′56″</button>`
-    + `<button type="button" data-fmt="dec" aria-pressed="${fmt === 'dec'}">12.5822°</button>`
-    + `</div>`
-    + `<button type="button" id="size-toggle" class="ghost" aria-pressed="${angleMode === 'compact'}" title="Angle size: full (12°34′56″) or compact (leading pair only: 12°34′, or 5′10″ when degrees are leading zeroes). Display only; calculations always use precise decimals.">◐ ${angleMode}</button>`
-    + `<button type="button" id="glyph-toggle" class="ghost" aria-pressed="${glyphs}" title="Show sign and planet glyphs instead of names">♍ ${glyphs ? 'glyphs' : 'names'}</button>`
+  let html = `<div class="results-head">`
     + `<button id="share" class="ghost" type="button" title="Copy a link to this chart">Share</button></div>`;
   html += `<div class="angles"><div><span class="k">Ascendant</span><span class="v" data-asc>${fmtLon(out[72], fmt)}</span></div>`
         + `<div><span class="k">Midheaven</span><span class="v" data-mc>${fmtLon(out[73], fmt)}</span></div></div>`;

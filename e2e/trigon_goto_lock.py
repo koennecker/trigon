@@ -18,6 +18,18 @@ def check(name, ok, detail=""):
     results.append((name, ok, detail))
     print(("PASS " if ok else "FAIL ") + name + (f" — {detail}" if detail else ""))
 
+def open_settings(pg):
+    if pg.locator("#settings-modal:not([hidden])").count():
+        return
+    if pg.locator("#input-card.open").count() == 0:
+        pg.locator("#input-fab").click(timeout=8000)
+        pg.wait_for_selector("#input-card.open", timeout=8000)
+    pg.click("#settings-open")
+    pg.wait_for_selector("#settings-modal:not([hidden])", timeout=8000)
+
+def close_settings(pg):
+    pg.click("#settings-close")
+    pg.wait_for_selector("#settings-modal[hidden]", state="attached", timeout=8000)
 def jd_to_utc(jd):
     return datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(days=jd - 2440587.5)
 
@@ -157,7 +169,7 @@ try:
             "document.getElementById('sky-readout').textContent.includes('UTC')", timeout=90000)
         page.wait_for_timeout(1200)
 
-        page.click("#sky-opts summary")
+        open_settings(page)
         page.wait_for_selector("#sky-locksel", timeout=5000)
         opts = page.eval_on_selector_all("#sky-locksel option", "els => els.map(e => [e.value, e.text])")
         check("lock picker lists Off + 12 bodies",
@@ -169,16 +181,21 @@ try:
               not page.is_visible("#sky-lockbtn"))
 
         page.select_option("#sky-locksel", "3")  # Venus
+        close_settings(page)
         page.wait_for_selector("#sky-lockbtn:visible", timeout=5000)
         chip = page.inner_text("#sky-lockbtn")
         check("chip shows Venus tracking", "Venus" in chip, chip)
         page.wait_for_timeout(800)
         page.screenshot(path=f"{SHOT}/shot_skylock_venus.png")
         # unlock via the picker
+        open_settings(page)
         page.select_option("#sky-locksel", "")
+        close_settings(page)
         check("picker Off hides chip", not page.is_visible("#sky-lockbtn"))
         # lock Mars, unlock via the chip
+        open_settings(page)
         page.select_option("#sky-locksel", "4")
+        close_settings(page)
         page.wait_for_selector("#sky-lockbtn:visible", timeout=5000)
         page.click("#sky-lockbtn")
         check("chip click unlocks", not page.is_visible("#sky-lockbtn"))
@@ -195,8 +212,7 @@ try:
         page.click("#stn-results button[data-anim-period] >> nth=0")
         page.wait_for_selector("#sky-lockbtn:visible", timeout=15000)
         check("animate sets lock chip", "tracking" in page.inner_text("#sky-lockbtn"))
-        if not page.get_attribute("#sky-opts", "open"):
-            page.click("#sky-opts summary")
+        open_settings(page)
         check("animate syncs lock picker",
               page.eval_on_selector("#sky-locksel", "el => el.value") == ib,
               f"picker={page.eval_on_selector('#sky-locksel', 'el => el.value')} ib={ib}")

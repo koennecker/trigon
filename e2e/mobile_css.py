@@ -13,6 +13,23 @@ SITE = harness.site_dir()
 SHOT = os.path.dirname(os.path.abspath(__file__))
 
 results = []
+
+def open_settings(pg):
+    if pg.locator("#input-card.open").count() == 0:
+        pg.locator("#input-fab").click(timeout=8000)
+        pg.wait_for_selector("#input-card.open", timeout=8000)
+    pg.click("#settings-open")
+    pg.wait_for_selector("#settings-modal:not([hidden])", timeout=8000)
+    if pg.evaluate("window.innerWidth <= 640"):
+        # On mobile the drawer is an overlay: close it behind the modal so
+        # the sky panel is reachable again when the modal closes.
+        pg.evaluate("document.getElementById('input-hide').click()")
+        pg.wait_for_selector("#input-card:not(.open)", timeout=8000)
+
+def close_settings(pg):
+    pg.click("#settings-close")
+    pg.wait_for_selector("#settings-modal[hidden]", state="attached", timeout=8000)
+
 def check(name, ok, detail=""):
     results.append((name, ok, detail))
     print(("PASS " if ok else "FAIL ") + name + (f" — {detail}" if detail else ""))
@@ -91,16 +108,19 @@ try:
         page.wait_for_function("document.getElementById('sky-readout').textContent.includes('UTC')", timeout=90000)
         page.wait_for_timeout(1200)
 
-        page.click("#sky-opts summary")
+        open_settings(page)
         page.wait_for_timeout(400)
         geo = page.evaluate("""() => {
           const r = s => { const e = document.querySelector(s); const b = e.getBoundingClientRect();
                            return {x: b.x, y: b.y, w: b.width, h: b.height}; };
-          return {wrap: r('#sky-wrap'), opts: r('#sky-opts'), readout: r('#sky-readout'),
-                  fsbtn: r('#sky-fsbtn'), ov: r('#sky-overlays')};
+          return {wrap: r('#sky-wrap'), card: r('.settings-card'), readout: r('#sky-readout'),
+                  fsbtn: r('#sky-fsbtn'), vw: window.innerWidth};
         }""")
-        check("mobile: open opts panel inside sky wrap", within(geo["opts"], geo["wrap"]),
-              f"opts w={geo['opts']['w']:.0f} wrap w={geo['wrap']['w']:.0f}")
+        check("mobile: settings card inside viewport",
+              geo["card"]["x"] >= -1 and geo["card"]["x"] + geo["card"]["w"] <= geo["vw"] + 1,
+              f"card w={geo['card']['w']:.0f} vw={geo['vw']:.0f}")
+        check("mobile: sky options live in the settings modal",
+              page.locator("#sky-overlays input").count() > 10)
         check("mobile: readout inside sky wrap", within(geo["readout"], geo["wrap"]))
         # fsbtn bottom-right, no overlap with readout
         fb, ro = geo["fsbtn"], geo["readout"]
@@ -112,7 +132,7 @@ try:
         page.screenshot(path=os.path.join(SHOT, "m_sky_opts.png"))
 
         # native fullscreen still works in Chromium
-        page.click("#sky-opts summary")  # close panel
+        close_settings(page)
         page.wait_for_timeout(300)
         page.click("#sky-fsbtn")
         page.wait_for_timeout(600)
@@ -175,18 +195,14 @@ try:
         page.wait_for_selector("#sky-canvas canvas", timeout=30000)
         page.wait_for_function("document.getElementById('sky-readout').textContent.includes('UTC')", timeout=90000)
         page.wait_for_timeout(800)
-        page.click("#sky-opts summary")
+        open_settings(page)
         page.wait_for_timeout(400)
-        geo = page.evaluate("""() => {
-          const r = s => { const e = document.querySelector(s); const b = e.getBoundingClientRect();
-                           return {x: b.x, y: b.y, w: b.width, h: b.height}; };
-          return {wrap: r('#sky-wrap'), opts: r('#sky-opts'), fsbtn: r('#sky-fsbtn')};
-        }""")
-        check("desktop: open opts panel inside wrap", within(geo["opts"], geo["wrap"]),
-              f"opts w={geo['opts']['w']:.0f}")
-        z = page.evaluate("""() => ({opts: getComputedStyle(document.getElementById('sky-opts')).zIndex,
+        check("desktop: sky options live in the settings modal",
+              page.locator("#sky-overlays input").count() > 10)
+        z = page.evaluate("""() => ({modal: getComputedStyle(document.getElementById('settings-modal')).zIndex,
           fs: getComputedStyle(document.getElementById('sky-fsbtn')).zIndex})""")
-        check("desktop: opts paints above fsbtn", int(z["opts"]) > int(z["fs"]), str(z))
+        check("desktop: settings modal paints above fsbtn", int(z["modal"]) > int(z["fs"]), str(z))
+        close_settings(page)
         check("desktop: zero console errors", not cerr, cerr[:2])
         check("desktop: zero page errors", not perr, perr[:2])
         browser.close()

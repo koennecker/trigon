@@ -82,12 +82,12 @@ describe('buildTableHTML', () => {
     assert.match(html, />1°00′09″\/d</); // Sun speed
     assert.match(html, /<span class="direct">D<\/span>/); // green direct marker
   });
-  it('marks the active angle format on the toggle', () => {
+  it('renders values per the angle format; settings controls live in the modal', () => {
     const dms = buildTableHTML(fakeOut(), 'dms');
-    assert.match(dms, /data-fmt="dms" aria-pressed="true"/);
-    assert.match(dms, /data-fmt="dec" aria-pressed="false"/);
+    assert.ok(!dms.includes('data-fmt=') && !dms.includes('glyph-toggle')
+      && !dms.includes('size-toggle'), 'no settings controls in the results head');
+    assert.match(dms, /id="share"/, 'share action remains');
     const dec = buildTableHTML(fakeOut(), 'dec');
-    assert.match(dec, /data-fmt="dec" aria-pressed="true"/);
     assert.match(dec, /352\.7419°/);
   });
   it('is deterministic', () => {

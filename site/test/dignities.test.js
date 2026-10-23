@@ -137,11 +137,11 @@ describe('computeLordships', () => {
 });
 
 describe('buildLordshipHTML / buildSyzygyHTML', () => {
-  it('renders summary, cards, sect + decan options', () => {
+  it('renders summary, cards, sect (decan control lives in the settings modal)', () => {
     const html = buildLordshipHTML(fakeOut(), LOTS, DAY);
     assert.match(html, /Lordship deep dive/);
     assert.match(html, /Day chart/);
-    assert.match(html, /class="decan-method"/);
+    assert.ok(!html.includes('decan-method'), 'no decan select in the section');
     assert.match(html, /Lords over Sun/);
     assert.match(html, /Sun rules/);
     assert.match(html, /Houses ruled/);
