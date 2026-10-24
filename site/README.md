@@ -145,12 +145,13 @@ up the same way.
   the `chart.js` style descriptors. The controls render in the Chart
   section of the settings modal (gear button in the input drawer head;
   the modal's Table section holds the angle format/size, glyphs,
-  decan and lot options, its Sky section the sky overlay controls),
+  station times, decan and lot options, its Sky section the sky overlay controls),
   which `app.js` builds and wires at startup.
 - `chart-tooltip.js` — chart point hover/focus tooltips: delegated
   panel events, element lifecycle, edge-aware positioning. The data
   comes from `table.js` `pointTooltip`, assembled by `app.js` (station
-  values read back from the table cells at hover time).
+  values read back from the table cells at hover time, so the tooltip
+  follows the station-time mode without its own setting).
 - `glyphs.js` — vector glyphs for the 12 signs and 12 points (planets
   + nodes): standard-form outlines on a 0..100 grid, rendered as SVG
   fills with an optional same-color outline. Consumed by `chart.js`
@@ -161,7 +162,8 @@ up the same way.
   glyphs and the table/sky views still use font text.
 - `format.js` — pure display formatting: angles (`dms`/`compact`/`dec`
   via `effFmt()`), `fmtSpeedDR` (D/R suffix), `fmtLon`, `fmtDec`,
-  `gotoButtonHTML`, `rowsToCSV`, planet/sign colors
+  `gotoButtonHTML`, `fmtRelativeInstant` (station distance from the
+  chart instant: "in 42d 6h" / "42d 6h ago"), `rowsToCSV`, planet/sign colors
   (`PLANET_COLORS`, element-colored signs).
 - `sky.js` — Three.js sky viewer (lazy-loaded `vendor/three.module.min.js`;
   never construct THREE objects at module scope — it loads lazily).
@@ -170,7 +172,8 @@ up the same way.
 
 **Persistence & misc**
 - Input drawer open/closed, glyphs toggle (`trigon.glyphs.v1`), angle mode
-  (`trigon.angle-mode.v1`), dignity toggles, sky options (`trigon.sky.v1`),
+  (`trigon.angle-mode.v1`), station times (`trigon.station-time.v1`),
+  dignity toggles, sky options (`trigon.sky.v1`),
   aspect conditions (`trigon.aspconds.v1`), lots selection
   (`trigon.lots.selection.v1`) — all in localStorage.
 - `logo.svg` — site logo.

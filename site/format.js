@@ -106,6 +106,29 @@ export function fmtUTC(jd) {
   return fmtInstant(jd);
 }
 
+// Duration from a reference instant to another, in words: "in 42d 6h"
+// for a future instant, "42d 6h ago" for a past one, "now" within half
+// a minute. Two units at most, minute precision (matching fmtInstant):
+// minutes under an hour, hours+minutes under a day, days+hours above.
+// The reference is the chart instant, not "now" — a station's relative
+// label moves when the chart does, and its absolute instant is unchanged.
+/** @param {number} stationJd @param {number} refJd @returns {string} */
+export function fmtRelativeInstant(stationJd, refJd) {
+  const deltaMin = Math.round((stationJd - refJd) * 1440);
+  if (deltaMin === 0) return 'now';
+  const a = Math.abs(deltaMin);
+  let dur;
+  if (a < 60) dur = `${a}m`;
+  else if (a < 1440) {
+    const h = Math.floor(a / 60), m = a % 60;
+    dur = m ? `${h}h ${m}m` : `${h}h`;
+  } else {
+    const d = Math.floor(a / 1440), h = Math.floor((a % 1440) / 60);
+    dur = h ? `${d}d ${h}h` : `${d}d`;
+  }
+  return deltaMin < 0 ? `${dur} ago` : `in ${dur}`;
+}
+
 export function fmtOffset(min) {
   const sign = min < 0 ? '-' : '+';
   const hh = String(Math.floor(Math.abs(min) / 60)).padStart(2, '0');
@@ -168,6 +191,20 @@ export function writeAngleMode(storage, mode) {
   try { storage.setItem(ANGLE_MODE_KEY, mode); } catch (e) { /* storage unavailable */ }
 }
 
+// Station time display: 'absolute' (the station's datetime, the default)
+// or 'relative' (its distance from the chart instant). Display only —
+// the station's JD is unchanged, so a clicked relative label still sets
+// the chart to the absolute station instant.
+export const STATION_TIME_KEY = 'trigon.station-time.v1';
+export function readStationTime(storage) {
+  try { return storage.getItem(STATION_TIME_KEY) === 'relative' ? 'relative' : 'absolute'; }
+  catch (e) { return 'absolute'; }
+}
+export function writeStationTime(storage, mode) {
+  try { storage.setItem(STATION_TIME_KEY, mode === 'relative' ? 'relative' : 'absolute'); }
+  catch (e) { /* storage unavailable */ }
+}
+
 // RFC 4180 CSV from a 2-D array of cell values (first row is the header).
 // Cells containing commas, quotes, or newlines are quoted, quotes doubled.
 export function rowsToCSV(rows) {
@@ -193,9 +230,15 @@ export function csvDownloadButton(filename) {
 // Clickable datetime button: sets the main chart to this instant (JD).
 // One shared helper so every datetime in every table follows the same
 // policy (search results, stations, lunations...). The dotted underline
-// (CSS .goto-dt) exposes the affordance at rest.
-export function gotoButtonHTML(jd, label) {
+// (CSS .goto-dt) exposes the affordance at rest. When the visible label
+// is relative (station times in relative mode), `hint` carries the
+// absolute instant for the title and aria-label, so the button still
+// names the instant it sets; without it the output is unchanged.
+/** @param {number} jd @param {string} label @param {string} [hint] @returns {string} */
+export function gotoButtonHTML(jd, label, hint = null) {
+  const spoken = hint || label;
+  const title = hint ? `Set the main chart to ${hint}` : 'Set the main chart to this date/time';
   return `<button type="button" class="goto-dt" data-goto-jd="${jd}"`
-    + ` title="Set the main chart to this date/time"`
-    + ` aria-label="Set the main chart to ${label}">${label}</button>`;
+    + ` title="${title}"`
+    + ` aria-label="Set the main chart to ${spoken}">${label}</button>`;
 }

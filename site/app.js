@@ -13,7 +13,8 @@ import {
 import { openDatePicker } from './datepicker.js';
 import { attachDateTime } from './datetime.js';
 import { fmtLon, fmtCoord, fmtSignPos, readAngleFmt, writeAngleFmt, rowsToCSV, gotoButtonHTML,
-  readGlyphsPref, writeGlyphsPref, readAngleMode, writeAngleMode } from './format.js';
+  readGlyphsPref, writeGlyphsPref, readAngleMode, writeAngleMode,
+  fmtRelativeInstant, readStationTime, writeStationTime } from './format.js';
 import { parseShareHashString, shareLink, shareLinks } from './share.js';
 import { tableRows, buildTableHTML, speedIndicatorHTML, angleRows, pointTooltip, swapGlyphChars } from './table.js';
 import { computeLots, buildLotsHTML, buildLotOptionsHTML, readLotOptions, writeLotOptions, sunAltitudeDeg,
@@ -65,6 +66,11 @@ let angleFmt = readAngleFmt(safeStorage);
 // into the dms variant; state always carries precise decimals.
 let glyphsOn = readGlyphsPref(safeStorage);
 let angleMode = readAngleMode(safeStorage);
+// Station time display: 'absolute' (station datetime) or 'relative'
+// (distance from the chart instant). Persisted like the angle format;
+// the station cells and the chart tooltip both read it, the tooltip
+// via the table cells it reads back at hover time.
+let stationTime = readStationTime(safeStorage);
 const effFmt = () => angleFmt === 'dec' ? 'dec' : (angleMode === 'compact' ? 'compact' : 'dms');
 
 // Hermetic-lot tradition variants (Valens/Ptolemy options in the Table
@@ -505,7 +511,14 @@ function maybeRefreshExtras(force = false) {
       const grid = scan(jd - 850, 5, 340);
       const fmtStn = s => {
         if (!s) return '—';
-        const str = `${s.type} ${fmtSignPos(s.lon, 'dms', glyphsOn)} ${gotoButtonHTML(s.jd, fmtInstant(s.jd))}`;
+        // The button's JD never changes with the display mode: a
+        // relative label still sets the chart to the absolute station
+        // instant, and the absolute instant rides in the button's
+        // title/aria-label for hover and screen readers.
+        const abs = fmtInstant(s.jd);
+        const label = stationTime === 'relative' ? fmtRelativeInstant(s.jd, jd) : abs;
+        const str = `${s.type} ${fmtSignPos(s.lon, 'dms', glyphsOn)} `
+          + gotoButtonHTML(s.jd, label, stationTime === 'relative' ? abs : null);
         return glyphsOn ? swapGlyphChars(str) : str;
       };
       for (let ib = 2; ib <= 9; ib++) {
@@ -975,6 +988,8 @@ function syncSettingsUI() {
     b.setAttribute('aria-pressed', String(b.dataset.setSize === angleMode)));
   modal.querySelectorAll('[data-set-glyphs]').forEach(b =>
     b.setAttribute('aria-pressed', String((b.dataset.setGlyphs === 'glyphs') === glyphsOn)));
+  modal.querySelectorAll('[data-set-stn-time]').forEach(b =>
+    b.setAttribute('aria-pressed', String(b.dataset.setStnTime === stationTime)));
   const dec = $('set-decan');
   if (dec) dec.value = digOpts.decan;
 }
@@ -996,6 +1011,13 @@ function syncSettingsUI() {
     b.addEventListener('click', () => {
       glyphsOn = b.dataset.setGlyphs === 'glyphs';
       writeGlyphsPref(safeStorage, glyphsOn);
+      syncSettingsUI();
+      if (S.out) renderResults(S.out, S.meta);
+    }));
+  modal.querySelectorAll('[data-set-stn-time]').forEach(b =>
+    b.addEventListener('click', () => {
+      stationTime = b.dataset.setStnTime === 'relative' ? 'relative' : 'absolute';
+      writeStationTime(safeStorage, stationTime);
       syncSettingsUI();
       if (S.out) renderResults(S.out, S.meta);
     }));

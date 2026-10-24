@@ -6,6 +6,8 @@ import {
   SIGNS, norm360, signOf, fmtLon, fmtDec, fmtSpeed, motionOf, fmtMag, dash,
   fmtUTC, fmtOffset, fmtCoord, zoneOffsetMinutes, fmtSignPos,
   FMT_KEY, readAngleFmt, writeAngleFmt, rowsToCSV, csvDownloadButton,
+  fmtRelativeInstant, STATION_TIME_KEY, readStationTime, writeStationTime,
+  gotoButtonHTML,
 } from '../format.js';
 import { jdFromCal } from '../search.js';
 
@@ -103,6 +105,67 @@ describe('fmtUTC (integration with dateapi)', () => {
   it('handles a BCE instant', () => {
     const jd = jdFromCal(-43, 3, 15, 19.4716); // Ides of March, astronomical year
     assert.equal(fmtUTC(jd), '15 Mar 44 BCE 19:28');
+  });
+});
+
+describe('fmtRelativeInstant', () => {
+  const ref = 2460000.0;
+  it('names future and past with the chart instant as reference', () => {
+    assert.equal(fmtRelativeInstant(ref + 42.25, ref), 'in 42d 6h');
+    assert.equal(fmtRelativeInstant(ref - 42.25, ref), '42d 6h ago');
+  });
+  it('uses two units: minutes, hours+minutes, days+hours', () => {
+    assert.equal(fmtRelativeInstant(ref + 0.5 / 24, ref), 'in 30m');
+    assert.equal(fmtRelativeInstant(ref - 1.5 / 24, ref), '1h 30m ago');
+    assert.equal(fmtRelativeInstant(ref + 712.5, ref), 'in 712d 12h');
+  });
+  it('drops a zero second unit and names the instant itself', () => {
+    assert.equal(fmtRelativeInstant(ref + 1, ref), 'in 1d');
+    assert.equal(fmtRelativeInstant(ref + 5 / 24, ref), 'in 5h');
+    assert.equal(fmtRelativeInstant(ref, ref), 'now');
+  });
+});
+
+describe('station time persistence', () => {
+  const memStore = () => {
+    const m = new Map();
+    return {
+      getItem: k => (m.has(k) ? m.get(k) : null),
+      setItem: (k, v) => m.set(k, String(v)),
+    };
+  };
+  it('defaults to absolute and round-trips relative', () => {
+    const s = memStore();
+    assert.equal(readStationTime(s), 'absolute');
+    writeStationTime(s, 'relative');
+    assert.equal(s.getItem(STATION_TIME_KEY), 'relative');
+    assert.equal(readStationTime(s), 'relative');
+    writeStationTime(s, 'absolute');
+    assert.equal(readStationTime(s), 'absolute');
+  });
+  it('treats an unknown stored value as absolute and survives throwing storage', () => {
+    const s = memStore();
+    s.setItem(STATION_TIME_KEY, 'bogus');
+    assert.equal(readStationTime(s), 'absolute');
+    const bad = { getItem() { throw new Error('denied'); }, setItem() { throw new Error('denied'); } };
+    assert.equal(readStationTime(bad), 'absolute');
+    assert.doesNotThrow(() => writeStationTime(bad, 'relative'));
+  });
+});
+
+describe('gotoButtonHTML', () => {
+  it('is unchanged without a hint', () => {
+    assert.equal(gotoButtonHTML(2460000, '2026-09-29 12:30'),
+      '<button type="button" class="goto-dt" data-goto-jd="2460000"'
+      + ' title="Set the main chart to this date/time"'
+      + ' aria-label="Set the main chart to 2026-09-29 12:30">2026-09-29 12:30</button>');
+  });
+  it('keeps the JD and names the absolute instant when the label is relative', () => {
+    const html = gotoButtonHTML(2460000, 'in 42d 6h', '2026-09-29 12:30');
+    assert.match(html, /data-goto-jd="2460000"/);
+    assert.match(html, />in 42d 6h</);
+    assert.match(html, /title="Set the main chart to 2026-09-29 12:30"/);
+    assert.match(html, /aria-label="Set the main chart to 2026-09-29 12:30"/);
   });
 });
 
