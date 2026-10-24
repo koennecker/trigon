@@ -84,6 +84,18 @@ def main():
                 timeout=5000)
             check("lots option checkbox toggles in the modal", True)
             close_settings(page)
+            # Regression: closing the modal must restore scrolling even
+            # though the desktop drawer (sidebar) is still open. The old
+            # close path read the drawer's nav-open class as "keep the
+            # lock", which is only a lock on mobile, and left an inline
+            # overflow:hidden behind on desktop.
+            scroll_restored = page.evaluate("""() => ({
+              inline: document.body.style.overflow,
+              computedY: getComputedStyle(document.body).overflowY,
+              cls: document.body.classList.contains('settings-open') })""")
+            check("desktop: closing modal restores scrolling with drawer open",
+                  scroll_restored["inline"] == "" and scroll_restored["computedY"] != "hidden"
+                  and not scroll_restored["cls"], str(scroll_restored))
 
             # Sky section populates once the Sky view has loaded.
             page.click('#views .tabs button[data-tab="sky"]')
@@ -128,6 +140,19 @@ def main():
                   card["x"] >= -1 and card["x"] + card["w"] <= card["vw"] + 1, str(card))
             mp.screenshot(path="/tmp/settings_modal_m.png")
             close_settings(mp)
+            # Mobile: the open overlay drawer keeps scrolling locked after
+            # the modal closes, but closing the drawer must release it.
+            # The two locks are independent classes, so neither leaks.
+            locked = mp.evaluate("() => getComputedStyle(document.body).overflowY")
+            check("mobile: drawer still locks scrolling after modal closes",
+                  locked == "hidden", locked)
+            mp.click("#input-hide")
+            mp.wait_for_function(
+                "!document.getElementById('input-card').classList.contains('open')",
+                timeout=8000)
+            unlocked = mp.evaluate("() => getComputedStyle(document.body).overflowY")
+            check("mobile: closing drawer restores scrolling after modal closes",
+                  unlocked != "hidden", unlocked)
             b.close()
     check("zero console/page errors", not errors, "; ".join(errors[:3]))
     failed = [n for n, ok in results if not ok]

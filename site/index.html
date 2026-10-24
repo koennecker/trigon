@@ -244,6 +244,10 @@
     background: rgba(1,4,8,.62);
   }
   #settings-modal[hidden] { display: none; }
+  /* The modal's own scroll lock, independent of the drawer's mobile-only
+     lock below: closing the modal must never leave the drawer's lock
+     behind, or vice versa. */
+  body.settings-open { overflow: hidden; }
   .settings-card {
     width: min(600px, 100%); max-height: 92dvh; overflow-y: auto; overscroll-behavior: contain;
     background: #0d1117; border: 1px solid #30363d; border-radius: 10px;

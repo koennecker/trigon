@@ -990,13 +990,17 @@ function syncSettingsUI() {
   syncSettingsUI();
   const open = () => {
     modal.hidden = false;
-    document.body.style.overflow = 'hidden';
+    document.body.classList.add('settings-open');
     $('settings-close').focus();
   };
   const close = () => {
     modal.hidden = true;
-    // Keep the scroll lock while the mobile drawer holds it (nav-open).
-    document.body.style.overflow = document.body.classList.contains('nav-open') ? 'hidden' : '';
+    // Only the modal's own lock is released here. The drawer holds its
+    // scroll lock through the nav-open class (mobile CSS only), so the
+    // two locks can no longer leak into each other: on desktop the open
+    // sidebar must not lock the page, and closing the drawer must not
+    // leave a modal lock behind.
+    document.body.classList.remove('settings-open');
     $('settings-open').focus();
   };
   $('settings-open').addEventListener('click', open);
