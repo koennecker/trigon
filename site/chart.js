@@ -181,6 +181,88 @@ const ASPECTS = [
 ];
 const ORB = 3; // degrees
 
+// Aspect emphasis on point hover: emphasized lines are drawn thicker
+// (their base width times ASP_HOVER_MULT) and glow through the
+// asp-glow SVG filter defined in both wheel renderers; lines and marks
+// of aspects not involving the hovered point are hidden. The renderers
+// tag every aspect line with class="asp-line" and data-a/data-b (the
+// endpoint point keys) plus data-w (its base width), and every aspect
+// glyph with class="asp-mark" and the same endpoint keys, so
+// setAspectHighlight below can apply the state without recomputing
+// geometry.
+/** Thickness multiplier for a hovered point's aspect lines. */
+export const ASP_HOVER_MULT = 2.5;
+/** Id of the glow filter both wheel renderers define. */
+export const ASP_GLOW_FILTER = 'asp-glow';
+/** The glow filter definition, shared by both wheel renderers. */
+const ASP_GLOW_DEF = `<defs><filter id="${ASP_GLOW_FILTER}" x="-80%" y="-80%" `
+  + `width="260%" height="260%"><feGaussianBlur stdDeviation="2.5" result="b"/>`
+  + `<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
+
+/**
+ * The Ptolemaic aspects of one point, from an ephemeris output array
+ * (planet longitudes at out[i * 6], i in POINT_KEYS order). Same
+ * separation, orb, and first-match-per-pair rules as the wheel
+ * renderers, so the tooltip list agrees with the drawn lines.
+ * @param {string} key point key (a POINT_KEYS entry)
+ * @param {number[]} out ephemeris output array
+ * @returns {Array<{partnerKey: string, partner: string, glyph: string, color: string, name: string, orb: number}>}
+ */
+export function aspectsForPoint(key, out) {
+  const i = POINT_KEYS.indexOf(key);
+  if (i < 0 || !out) return [];
+  const lon = idx => norm360(out[idx * 6]);
+  const list = [];
+  for (let j = 0; j < 10; j++) {
+    if (j === i) continue;
+    let sep = Math.abs(lon(i) - lon(j));
+    sep = Math.min(sep, 360 - sep);
+    for (const a of ASPECTS) {
+      const delta = Math.abs(sep - a.angle);
+      if (delta > ORB) continue;
+      list.push({ partnerKey: POINT_KEYS[j], partner: POINT_NAMES[j],
+                  glyph: a.glyph, color: a.color, name: a.name, orb: delta });
+      break;
+    }
+  }
+  return list;
+}
+
+/**
+ * Apply (or clear) the hover emphasis on a rendered wheel's aspect
+ * lines and marks. With a point key, lines involving that point get
+ * their base width (data-w) times ASP_HOVER_MULT plus the glow filter
+ * and full opacity, while all other lines and marks are hidden; with
+ * null, every inline override is removed, restoring the rendered
+ * attributes. Operates on the DOM only (style/attributes); a fake
+ * element with dataset/style/getAttribute/setAttribute/removeAttribute
+ * suffices for unit tests.
+ * @param {object} svg the rendered wheel's <svg> element
+ * @param {string|null} key hovered point key, or null to clear
+ */
+export function setAspectHighlight(svg, key) {
+  if (!svg || typeof svg.querySelectorAll !== 'function') return;
+  svg.querySelectorAll('.asp-line').forEach(el => {
+    const involved = key && (el.dataset.a === key || el.dataset.b === key);
+    if (!key) {
+      el.style.opacity = '';
+      el.style.strokeWidth = '';
+      el.removeAttribute('filter');
+    } else if (involved) {
+      const base = parseFloat(el.dataset.w || el.getAttribute('stroke-width') || 1);
+      el.style.opacity = '1';
+      el.style.strokeWidth = (base * ASP_HOVER_MULT).toFixed(2);
+      el.setAttribute('filter', `url(#${ASP_GLOW_FILTER})`);
+    } else {
+      el.style.opacity = '0';
+    }
+  });
+  svg.querySelectorAll('.asp-mark').forEach(el => {
+    const involved = key && (el.dataset.a === key || el.dataset.b === key);
+    el.style.opacity = (!key || involved) ? '' : '0';
+  });
+}
+
 function norm360(d) { return ((d % 360) + 360) % 360; }
 
 // --- PAVA (Pool Adjacent Violators Algorithm) for optimal label declutter ---
@@ -627,13 +709,15 @@ export function renderChartSVG(out, opts = {}) {
         const [x1, y1] = P(st.rAsp, pts[i].elon);
         const [x2, y2] = P(st.rAsp, pts[j].elon);
         const w = ((0.8 + 2.7 * (1 - delta / ORB)) * sh.aspWidth).toFixed(2);
-        aspectSVG += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" `
+        aspectSVG += `<line class="asp-line" data-a="${pts[i].key}" data-b="${pts[j].key}" data-w="${w}" `
+                   + `x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" `
                    + `x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${a.color}" `
                    + `stroke-width="${w}" opacity="0.9">`
                    + `<title>${a.name}, orb ${delta.toFixed(2)}°</title></line>`;
         aspectMarks.push({ mx: (x1 + x2) / 2, my: (y1 + y2) / 2,
                            dx: x2 - x1, dy: y2 - y1,
-                           glyph: a.glyph, color: a.color });
+                           glyph: a.glyph, color: a.color,
+                           a: pts[i].key, b: pts[j].key });
         break;
       }
     }
@@ -662,7 +746,8 @@ export function renderChartSVG(out, opts = {}) {
     }
     if (k >= 12) return;
     placedMarks.push([gx, gy]);
-    aspectSVG += text(gx, gy, m.glyph + TVS, st.aspGlyphSize, m.color);
+    aspectSVG += text(gx, gy, m.glyph + TVS, st.aspGlyphSize, m.color,
+                      ` class="asp-mark" data-a="${m.a}" data-b="${m.b}"`);
   });
   s += aspectSVG;
 
@@ -725,6 +810,7 @@ export function renderChartSVG(out, opts = {}) {
   const ariaLabel = nW === 1 ? 'Whole-sign horoscope wheel'
     : `Whole-sign horoscope wheel with ${outerWheels.length} outer wheel${outerWheels.length === 1 ? '' : 's'}`;
   return `<svg viewBox="${vbX} ${vbY} ${vbS} ${vbS}" role="img" aria-label="${ariaLabel}">`
+       + ASP_GLOW_DEF
        + `<g font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif">${s}</g></svg>`;
 }
 
@@ -888,7 +974,8 @@ export function renderChartSVGMobile(out, opts = {}) {
           const [x1, y1] = P(st.rAsp, pts[i].lon);
           const [x2, y2] = P(st.rAsp, pts[j].lon);
           const w = (0.8 + 2.7 * (1 - Math.abs(sep - asp.angle) / ORB)) * sh.aspWidth;
-          s += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" `
+          s += `<line class="asp-line" data-a="${pts[i].key}" data-b="${pts[j].key}" data-w="${w.toFixed(1)}" `
+             + `x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" `
              + `stroke="${asp.color}" stroke-width="${w.toFixed(1)}" opacity="0.85"/>`;
           break;
         }
@@ -897,5 +984,6 @@ export function renderChartSVGMobile(out, opts = {}) {
   }
 
   return `<svg viewBox="${VB_M}" role="img" aria-label="Whole-sign horoscope wheel (mobile)">`
+       + ASP_GLOW_DEF
        + `<g font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif">${s}</g></svg>`;
 }

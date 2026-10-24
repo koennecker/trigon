@@ -5,7 +5,7 @@
 // IndexedDB, mirroring the file-naming logic of swi_gen_filename() in swephlib.c.
 
 import { migrateEpheCache, epheGet, ephePut } from './ephe-store.js';
-import { renderChartSVG, renderChartSVGMobile, getLastChartDebug } from './chart.js';
+import { renderChartSVG, renderChartSVGMobile, getLastChartDebug, aspectsForPoint, setAspectHighlight } from './chart.js';
 import { jdFromCal, calFromJd, JD_UNIX_EPOCH, stationsAround, syzygiesAround } from './search.js';
 import {
   BCE_MIN_ASTRO, eraToAstro, fmtInstant, lmtOffsetHours,
@@ -418,6 +418,10 @@ function chartTipData(g) {
     }
   }
   const data = pointTooltip(key, out, effFmt(), dig, stations, glyphsOn);
+  // Root-wheel points list their aspects at the bottom of the tooltip;
+  // outer-wheel points get none (the root aspects do not describe
+  // their instant), and angles/nodes have none to list.
+  if (data && wheel === 0) data.aspects = aspectsForPoint(key, out);
   return data ? { ...data, wheel } : null;
 }
 
@@ -933,8 +937,16 @@ const dtg = createDateTimeGroups({
   attach: (input, opts) => attachDateTime(input, opts),
 });
 // Chart point tooltips (display mechanics; data assembled by chartTipData).
+// The hover callback emphasizes the hovered point's aspect lines on the
+// wheel (other planets' lines hidden, its own thickened and glowing)
+// and clears the emphasis when the tooltip hides; outer-wheel points
+// clear it too, since the drawn lines are the root wheel's aspects.
 const chartTip = createChartTooltip({ panel: () => $('panel-chart'), tipData: chartTipData,
-  decorateHTML: html => glyphsOn ? swapGlyphChars(html) : html });
+  decorateHTML: html => glyphsOn ? swapGlyphChars(html) : html,
+  onPointHover: (key, wheel) => {
+    const svg = document.querySelector('#panel-chart .chart-wrap svg');
+    if (svg) setAspectHighlight(svg, wheel === 0 ? key : null);
+  } });
 // Outer wheels (biwheel/triwheel panels + animation target).
 const outerApi = createOuterWheels({
   el: $, rootInstantMs: () => S.instantMs,

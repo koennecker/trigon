@@ -4,7 +4,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { pavaIsotonic, declutterArc, renderChartSVG, renderChartSVGMobile,
          CHART_STYLE_SECTIONS, defaultChartStyle, resolveChartStyle,
-         labelAngularHW, labelTokenPitch, placeOuterGlyphs } from '../chart.js';
+         labelAngularHW, labelTokenPitch, placeOuterGlyphs,
+         aspectsForPoint, setAspectHighlight, ASP_HOVER_MULT } from '../chart.js';
 
 const approx = (a, b, tol = 1e-9) => Math.abs(a - b) <= tol;
 const approxArr = (a, b, tol = 1e-9) => {
@@ -428,5 +429,84 @@ describe('chart point hover groups', () => {
     assert.deepEqual(new Set(wheelKeys), new Set([
       'sun', 'moon', 'mercury', 'venus', 'mars', 'jupiter', 'saturn',
       'uranus', 'neptune', 'pluto']));
+  });
+});
+
+describe('aspectsForPoint', () => {
+  // Ephemeris output stub: planet longitudes at out[i * 6].
+  const mkOut = lons => {
+    const out = new Array(60).fill(0);
+    lons.forEach((lon, i) => { out[i * 6] = lon; });
+    return out;
+  };
+  const out = mkOut([0, 180, 60.5, 95, 120, 0.5, 300, 200, 90.5, 33]);
+
+  it('lists every aspect of the point in planet order, with orbs', () => {
+    const got = aspectsForPoint('sun', out).map(a => [a.partner, a.name, a.orb]);
+    assert.deepEqual(got, [
+      ['Moon', 'opposition', 0],
+      ['Mercury', 'sextile', 0.5],
+      ['Mars', 'trine', 0],
+      ['Jupiter', 'conjunction', 0.5],
+      ['Saturn', 'sextile', 0],
+      ['Neptune', 'square', 0.5],
+    ]);
+  });
+
+  it('wraps separations past 180 (Saturn at 300 is a sextile of Sun at 0)', () => {
+    const saturn = aspectsForPoint('sun', out).find(a => a.partner === 'Saturn');
+    assert.equal(saturn.name, 'sextile');
+    assert.equal(saturn.orb, 0);
+  });
+
+  it('includes an orb of exactly 3 and excludes anything beyond', () => {
+    const at3 = mkOut([0, 183, 0, 0, 0, 0, 0, 0, 0, 0]);
+    assert.equal(aspectsForPoint('sun', at3).length, 9); // Moon opposition at orb 3 + 8 conjunctions
+    const past = mkOut([0, 183.1, 0, 0, 0, 0, 0, 0, 0, 0]);
+    assert.ok(!aspectsForPoint('sun', past).some(a => a.partner === 'Moon'));
+  });
+
+  it('returns an empty list for non-planets and missing output', () => {
+    assert.deepEqual(aspectsForPoint('ascendant', out), []);
+    assert.deepEqual(aspectsForPoint('sun', null), []);
+  });
+});
+
+describe('setAspectHighlight', () => {
+  const fakeEl = (a, b, w) => ({
+    dataset: { a, b, w },
+    style: {},
+    attrs: {},
+    getAttribute(n) { return this.attrs[n]; },
+    setAttribute(n, v) { this.attrs[n] = v; },
+    removeAttribute(n) { delete this.attrs[n]; },
+  });
+  const lines = [fakeEl('sun', 'moon', '1.00'), fakeEl('mars', 'venus', '2.00')];
+  const marks = [fakeEl('sun', 'moon', ''), fakeEl('mars', 'venus', '')];
+  const svg = { querySelectorAll: sel => (sel === '.asp-line' ? lines : marks) };
+
+  it('emphasizes the hovered point\'s lines and hides the rest', () => {
+    setAspectHighlight(svg, 'sun');
+    assert.equal(lines[0].style.strokeWidth, (1.00 * ASP_HOVER_MULT).toFixed(2));
+    assert.equal(lines[0].style.opacity, '1');
+    assert.equal(lines[0].attrs.filter, 'url(#asp-glow)');
+    assert.equal(lines[1].style.opacity, '0');
+    assert.equal(marks[0].style.opacity, '');
+    assert.equal(marks[1].style.opacity, '0');
+  });
+
+  it('clears every override on null', () => {
+    setAspectHighlight(svg, 'sun');
+    setAspectHighlight(svg, null);
+    for (const el of [...lines, ...marks]) {
+      assert.equal(el.style.opacity, '');
+      assert.equal(el.attrs.filter, undefined);
+    }
+    for (const el of lines) assert.equal(el.style.strokeWidth, '');
+  });
+
+  it('tolerates a missing or query-less root', () => {
+    setAspectHighlight(null, 'sun');
+    setAspectHighlight({}, 'sun');
   });
 });

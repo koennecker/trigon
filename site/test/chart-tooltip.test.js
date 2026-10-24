@@ -61,3 +61,32 @@ describe('tooltipHTML', () => {
     assert.ok(h.includes('c&gt;d'));
   });
 });
+
+describe('tooltipHTML aspects section', () => {
+  const base = {
+    name: 'Sun', color: '#58a6ff', wheel: 0,
+    fields: [{ label: 'Longitude', value: 'Aries 0°00′' }],
+  };
+  it('lists aspects at the bottom when present', () => {
+    const h = tooltipHTML({ ...base, aspects: [
+      { glyph: '☍', partner: 'Moon', color: '#ff7b72', name: 'opposition', orb: 1.234 },
+    ] });
+    assert.ok(h.includes('<div class="ct-aspects">'));
+    assert.ok(h.includes('☍ Moon'));
+    assert.ok(h.includes('opposition · orb 1.23°'));
+    assert.ok(h.indexOf('ct-aspects') > h.indexOf('Longitude'));
+  });
+
+  it('omits the section when there are no aspects', () => {
+    assert.ok(!tooltipHTML(base).includes('ct-aspects'));
+    assert.ok(!tooltipHTML({ ...base, aspects: [] }).includes('ct-aspects'));
+  });
+
+  it('escapes aspect partner names', () => {
+    const h = tooltipHTML({ ...base, aspects: [
+      { glyph: '☌', partner: '<X>', color: '#fff', name: 'conjunction', orb: 0 },
+    ] });
+    assert.ok(!h.includes('<X>'));
+    assert.ok(h.includes('&lt;X&gt;'));
+  });
+});

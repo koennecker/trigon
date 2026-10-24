@@ -28,10 +28,21 @@ export function tipPosition(clientX, clientY, rectLeft, rectTop,
 /** Tooltip inner markup from pointTooltip data (+ wheel header). Pure. */
 export function tooltipHTML(data) {
   const head = data.wheel > 0 ? `${data.name} \u00B7 wheel ${data.wheel}` : data.name;
-  return `<div class="ct-head" style="color:${data.color}">${escHTML(head)}</div>`
+  let html = `<div class="ct-head" style="color:${data.color}">${escHTML(head)}</div>`
     + data.fields.map(f =>
         `<div class="ct-row"><span class="ct-k">${escHTML(f.label)}</span>`
       + `<span class="ct-v"${f.color ? ` style="color:${f.color}"` : ''}>${escHTML(f.value)}</span></div>`).join('');
+  // Aspect list at the bottom: one row per Ptolemaic aspect of this
+  // point (root wheel only — outer-wheel points get no list, since the
+  // root aspects do not describe their instant). Absent when empty.
+  if (data.aspects && data.aspects.length) {
+    html += `<div class="ct-aspects"><div class="ct-aspects-head">Aspects</div>`
+      + data.aspects.map(a =>
+          `<div class="ct-row"><span class="ct-k" style="color:${a.color}">${escHTML(a.glyph)} ${escHTML(a.partner)}</span>`
+        + `<span class="ct-v">${escHTML(a.name)} \u00B7 orb ${a.orb.toFixed(2)}\u00B0</span></div>`).join('')
+      + `</div>`;
+  }
+  return html;
 }
 
 /**
@@ -40,6 +51,10 @@ export function tooltipHTML(data) {
  * @param {(g: object) => object|null} env.tipData  tooltip data for a point group
  * @param {(html: string) => string} [env.decorateHTML]  post-processes the
  *   tooltip markup before it is set (e.g. glyph-char -> vector SVG swaps)
+ * @param {(key: string|null, wheel: number) => void} [env.onPointHover]
+ *   called with the hovered point key (and its wheel index) when a
+ *   tooltip shows, and with (null, 0) when it hides — the host uses it
+ *   to emphasize that point's aspect lines (see setAspectHighlight)
  */
 export function createChartTooltip(env) {
   let tipEl = null, tipKey = null;
@@ -47,6 +62,7 @@ export function createChartTooltip(env) {
   function hide() {
     if (tipEl) tipEl.style.display = 'none';
     tipKey = null;
+    if (env.onPointHover) env.onPointHover(null, 0);
   }
 
   function move(clientX, clientY) {
@@ -72,6 +88,7 @@ export function createChartTooltip(env) {
     tipEl.innerHTML = env.decorateHTML ? env.decorateHTML(tooltipHTML(data)) : tooltipHTML(data);
     tipEl.style.display = 'block';
     tipKey = `${g.dataset.point}:${data.wheel}`;
+    if (env.onPointHover) env.onPointHover(g.dataset.point, data.wheel);
     move(clientX, clientY);
   }
 
