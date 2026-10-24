@@ -319,6 +319,16 @@ export function attachDateTime(input, opts) {
       mpanel.setAttribute('aria-label', 'Choose month');
       document.body.append(mpanel);
       activeSuggest = { input, panel: mpanel, close: closeSuggest };
+      // One delegated commit: the buttons are rebuilt on every
+      // keystroke, so per-button wiring would not survive a re-render.
+      // pointerdown + preventDefault commits before input blur can
+      // dismiss the popup.
+      mpanel.addEventListener('pointerdown', e => {
+        const b = e.target.closest('.msuggest-item');
+        if (!b) return;
+        e.preventDefault();
+        commitSuggest([...mpanel.children].indexOf(b));
+      });
       // Position below the input; flip above if there is no room.
       const r = input.getBoundingClientRect();
       const pw = mpanel.offsetWidth, ph = mpanel.offsetHeight;
@@ -336,12 +346,6 @@ export function attachDateTime(input, opts) {
       b.setAttribute('role', 'option');
       b.setAttribute('aria-selected', i === ms.hi ? 'true' : 'false');
       b.textContent = FULL_MONTHS[mo - 1];
-      // pointerdown + preventDefault: commits before input blur can
-      // dismiss the popup.
-      b.addEventListener('pointerdown', e => {
-        e.preventDefault();
-        commitSuggest(i);
-      });
       mpanel.append(b);
     });
   }

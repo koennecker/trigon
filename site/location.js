@@ -141,9 +141,10 @@ export function createLocationUI(env) {
     box.innerHTML = '';
     box._items = null;
     if (!items.length) { box.classList.remove('open'); return; }
-    items.forEach(c => {
+    items.forEach((c, i) => {
       const d = document.createElement('div');
       d.className = 'item';
+      d.dataset.idx = String(i);
       const pop = c.pop >= 1e6 ? (c.pop / 1e6).toFixed(1) + 'M'
                 : c.pop >= 1e3 ? Math.round(c.pop / 1e3) + 'k' : String(c.pop);
       const nm = document.createElement('span');
@@ -152,7 +153,6 @@ export function createLocationUI(env) {
       pp.className = 'pop';
       pp.textContent = pop;
       d.appendChild(nm); d.appendChild(pp);
-      d.addEventListener('mousedown', e => { e.preventDefault(); selectCity(c); });
       box.appendChild(d);
     });
     box.classList.add('open');
@@ -194,6 +194,18 @@ export function createLocationUI(env) {
       const items = el('city-results')._items;
       if (e.key === 'Escape') closeCityResults();
       else if (e.key === 'Enter' && items && items.length) { e.preventDefault(); selectCity(items[0]); }
+    });
+    // Suggestion clicks are delegated: the items are rebuilt on every
+    // keystroke, so per-item wiring would not survive a re-render.
+    // mousedown + preventDefault selects before input blur can dismiss
+    // the list, as the per-item handler did.
+    el('city-results').addEventListener('mousedown', e => {
+      const item = e.target.closest('.item');
+      if (!item) return;
+      e.preventDefault();
+      const items = el('city-results')._items;
+      const c = items && items[parseInt(item.dataset.idx, 10)];
+      if (c) selectCity(c);
     });
     document.addEventListener('click', e => {
       if (!e.target.closest('#city-results') && e.target !== input) closeCityResults();

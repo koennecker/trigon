@@ -12,15 +12,14 @@ import {
 } from './dateapi.js';
 import { openDatePicker } from './datepicker.js';
 import { attachDateTime } from './datetime.js';
-import { fmtLon, fmtCoord, fmtSignPos, readAngleFmt, writeAngleFmt, rowsToCSV, gotoButtonHTML,
-  readGlyphsPref, writeGlyphsPref, readAngleMode, writeAngleMode,
-  fmtRelativeInstant, readStationTime, writeStationTime } from './format.js';
+import { fmtLon, fmtCoord, fmtSignPos, rowsToCSV, gotoButtonHTML,
+  fmtRelativeInstant } from './format.js';
 import { parseShareHashString, shareLink, shareLinks } from './share.js';
 import { tableRows, buildTableHTML, speedIndicatorHTML, angleRows, pointTooltip, swapGlyphChars } from './table.js';
-import { computeLots, buildLotsHTML, buildLotOptionsHTML, readLotOptions, writeLotOptions, sunAltitudeDeg,
-  computeCatalogLots, buildCatalogHTML, buildCatalogSelectedHTML, readCatalogSelection, writeCatalogSelection } from './lots.js';
+import { computeLots, buildLotsHTML, buildLotOptionsHTML, sunAltitudeDeg,
+  computeCatalogLots, buildCatalogHTML, buildCatalogSelectedHTML } from './lots.js';
 import {
-  buildSyzygyHTML, buildLordshipHTML, readDignityOpts, writeDignityOpts,
+  buildSyzygyHTML, buildLordshipHTML,
 } from './dignities.js';
 import { epheFile, computeChart, createEpheClient, validateEphOut, ephProvider } from './ephe.js';
 import { createSearchUI } from './search-ui.js';
@@ -31,6 +30,11 @@ import { createLoader } from './loader.js';
 import { createChartStyle } from './chart-style.js';
 import { createOuterWheels } from './outer-wheels.js';
 import { createChartTooltip } from './chart-tooltip.js';
+import { setText, setHTML, createSwapGuard } from './dom-patch.js';
+import {
+  S, update, subscribe, initPrefs, setPref,
+  angleFmt, angleMode, glyphsOn, stationTime, lotsOpts, catalogSelection, digOpts,
+} from './store.js';
 import { createDateTimeGroups } from './datetime-groups.js';
 import { createAnimation } from './animation.js';
 import { nearestCity } from './cities.js';
@@ -44,6 +48,11 @@ const safeStorage = {
   removeItem: (...a) => localStorage.removeItem(...a),
 };
 
+// Session state (S) and preferences live in the store (store.js): this
+// file reads them and writes only via update()/setPref(). initPrefs
+// loads the preferences before anything reads them.
+initPrefs(safeStorage);
+
 // JD of 0001-01-01 00:00 UTC: BCE/CE boundary for Moshier gating.
 const JD_1CE = jdFromCal(1, 1, 1, 0);
 // Millisecond instant of 12999 BCE-01-01 (share-link floor).
@@ -55,53 +64,9 @@ const renderChart = (out, opts) => isMobileChart()
   ? renderChartSVGMobile(out, opts)
   : renderChartSVG(out, opts);
 
-// ---------------------------------------------------------------------------
-// Formatting.
-// Angle display format: 'dms' (12°34′56″) or 'dec' (12.5822°). Persisted;
-// the storage handle is injected so the logic stays testable outside the browser.
-let angleFmt = readAngleFmt(safeStorage);
-
-// Table display preferences (persisted): glyphs instead of names, and
-// angle size full/compact. The effective format folds the size choice
-// into the dms variant; state always carries precise decimals.
-let glyphsOn = readGlyphsPref(safeStorage);
-let angleMode = readAngleMode(safeStorage);
-// Station time display: 'absolute' (station datetime) or 'relative'
-// (distance from the chart instant). Persisted like the angle format;
-// the station cells and the chart tooltip both read it, the tooltip
-// via the table cells it reads back at hover time.
-let stationTime = readStationTime(safeStorage);
+// The effective format folds the size choice into the dms variant;
+// state always carries precise decimals.
 const effFmt = () => angleFmt === 'dec' ? 'dec' : (angleMode === 'compact' ? 'compact' : 'dms');
-
-// Hermetic-lot tradition variants (Valens/Ptolemy options in the Table
-// tab). Persisted like the angle format.
-let lotsOpts = readLotOptions(safeStorage);
-
-// Hellenistic catalog: which attested names are displayed (persisted),
-// and the prenatal syzygy longitude once the extras scan has run.
-let catalogSelection = readCatalogSelection(safeStorage);
-/** @type {number|null} */
-// ---------------------------------------------------------------------------
-// Core chart session state. Single writer: run() and its render path
-// (renderResults / updateLiveResults) — every other module reads.
-// Everything else that looks like state is either a persisted preference
-// owned by its own control (above), section-local bookkeeping (extras,
-// sky, tick caches), or factory-owned state in the extracted modules.
-//   out       last computed ephemeris output (null before the first run)
-//   meta      its display stamp line
-//   instantMs the chart instant, ms since the Unix epoch (UTC)
-//   inp       last chart input {jd, lat, lon, ...}
-//   outerOuts computed outer wheels [{out, utcMs, label}]
-//   mod       the loaded ephemeris module handle
-//   useSwiss  engine of the last run (true = Swiss files, false = Moshier)
-//   syzygyLon longitude of the prenatal syzygy for the current chart
-const S = {
-  out: null, meta: '', instantMs: null, inp: null, outerOuts: [],
-  mod: null, useSwiss: true, syzygyLon: null,
-};
-
-// Decan method for the dignity columns / lordship deep dive. Persisted.
-let digOpts = readDignityOpts(safeStorage);
 
 // Last WASM module + engine, kept so the table extras (prev/next
 // stations, lunations) can scan around the chart instant.
@@ -233,10 +198,9 @@ let skyLoadPromise = null;
 
 function setAngleFmt(f) {
   if (f !== 'dms' && f !== 'dec') return;
-  angleFmt = f;
-  writeAngleFmt(safeStorage, f);
+  setPref('angleFmt', f);
   syncSettingsUI();
-  if (S.out) renderResults(S.out, S.meta);
+  if (S.out) renderResults(S.out);
 }
 
 // Lots option toggles: one delegated listener (the section is rebuilt on
@@ -263,33 +227,36 @@ $('panel-table').addEventListener('input', e => {
 // delegated handler for every [data-goto-jd] button in the panel.
 $('panel-table').addEventListener('click', e => {
   const b = e.target.closest('button[data-goto-jd]');
-  if (b) gotoSearchInstant(parseFloat(b.dataset.gotoJd));
+  if (b) { gotoSearchInstant(parseFloat(b.dataset.gotoJd)); return; }
+  // The share button is rebuilt with the table on every render, so it
+  // is wired by delegation like the goto buttons, not per render.
+  if (e.target.closest('#share')) shareChart();
+});
+
+// The debug-copy button is rebuilt with the chart panel on every
+// render, so it is wired by delegation on the static panel element.
+$('panel-chart').addEventListener('click', e => {
+  if (e.target.closest('#dbgcopy')) copyDebug();
 });
 
 document.addEventListener('change', e => {
   const t = e.target;
   if (t.classList && t.classList.contains('cat-sel')) {
     const id = t.dataset.id;
-    catalogSelection = t.checked
+    setPref('catalogSelection', t.checked
       ? [...catalogSelection, id]
-      : catalogSelection.filter(x => x !== id);
-    writeCatalogSelection(safeStorage, catalogSelection);
-    refreshCatalogAndLords();
+      : catalogSelection.filter(x => x !== id));
+    refreshSections(['catalog', 'lords']);
     return;
   }
-  if (t.classList && t.classList.contains('decan-method')) {    digOpts = { decan: t.value === 'indian' ? 'indian' : 'chaldean' };
-    writeDignityOpts(safeStorage, digOpts);
-    if (S.out) renderResults(S.out, S.meta);
+  if (t.classList && t.classList.contains('decan-method')) {
+    setPref('digOpts', { decan: t.value === 'indian' ? 'indian' : 'chaldean' });
+    if (S.out) renderResults(S.out);
     return;
   }
   if (!t.classList || !t.classList.contains('lots-opt')) return;
-  lotsOpts = { ...lotsOpts, [t.dataset.opt]: t.checked };
-  writeLotOptions(safeStorage, lotsOpts);
-  const el = document.querySelector('#panel-table #lots-section');
-  if (el && S.out && S.inp && S.instantMs != null) {
-    el.outerHTML = buildLotsHTML(
-      computeLots(S.out, S.instantMs, S.inp.lat, S.inp.lon, lotsOpts), effFmt());
-  }
+  setPref('lotsOpts', { ...lotsOpts, [t.dataset.opt]: t.checked });
+  refreshSection('lots');
 });
 
 // CSV download buttons above output tables (rendered by table.js, lots.js,
@@ -388,7 +355,7 @@ function rerenderChartSVG() {
   if (!S.out) return;
   chartTip.hide();
   const svg = renderChart(S.out, { ...chartOpts(), outerWheels: S.outerOuts });
-  lastChartSVG = svg;
+  chartGuard.mark(svg);
   const wrap = document.querySelector('#panel-chart .chart-wrap');
   if (wrap) wrap.innerHTML = svg;
 }
@@ -431,12 +398,27 @@ function chartTipData(g) {
   return data ? { ...data, wheel } : null;
 }
 
-function renderResults(out, meta, outerOuts = []) {
-  S.out = out; S.meta = meta; S.outerOuts = outerOuts;
-  lastChartSVG = renderChart(out, { ...chartOpts(), outerWheels: outerOuts });
+// Meta line HTML, built in render from data, never stored as markup:
+// the stored stamp, the chart input (calendar, latitude, longitude, BCE
+// flag), and the engine. The stamp span keeps its id so the live tick
+// can patch its text, and copyDebug can read it back.
+function buildMetaHTML() {
+  const inp = S.inp;
+  if (!inp) return '';
+  return `<span id="meta-stamp">UTC ${S.metaStamp}</span> \u00B7 `
+    + `${inp.gregorian ? 'Gregorian' : 'Julian'} calendar \u00B7 `
+    + `${inp.lat.toFixed(4)}\u00B0 ${inp.lat >= 0 ? 'N' : 'S'}, ${Math.abs(inp.lon).toFixed(4)}\u00B0 ${inp.lon >= 0 ? 'E' : 'W'} \u00B7 `
+    + (inp.bce ? 'local mean time \u00B7 ' : '')
+    + (S.useSwiss ? 'Swiss Ephemeris (JPL-based .se1 files)' : 'Moshier analytic ephemeris (approximate)');
+}
+
+function renderResults(out, outerOuts = []) {
+  update({ out, outerOuts });
+  const svg = renderChart(out, { ...chartOpts(), outerWheels: outerOuts });
+  chartGuard.mark(svg);
   $('views-head').innerHTML =
       `<div class="res-brand"><img class="logo" src="logo.svg" alt="">Trigon</div>`
-    + `<div class="meta" style="margin-bottom:4px">${meta}</div>`;
+    + `<div class="meta" style="margin-bottom:4px">${buildMetaHTML()}</div>`;
   const dig = digFull(out);
   lordsSectShown = dig.isDay;
   const lotsRes = S.inp && S.instantMs != null
@@ -449,7 +431,7 @@ function renderResults(out, meta, outerOuts = []) {
     + (catRes ? buildCatalogHTML(catRes.values, catalogSelection, effFmt()) : '')
     + buildLordshipHTML(out, [...(lotsRes ? lotsRes.values : []), ...(catRes ? catRes.values.filter(v => v.lon != null) : [])], dig);
   $('panel-chart').innerHTML =
-      `<div class="chart-wrap">${lastChartSVG}</div>`
+      `<div class="chart-wrap">${svg}</div>`
     + `<div class="chart-cap">Whole-sign houses \u00B7 1st house = Ascendant\u2019s sign `
     + `\u00B7 Ptolemaic aspects, 3\u00B0 orb \u00B7 true node axis `
     + `<button id="dbgcopy" class="ghost" type="button" title="Copy chart debug state as JSON">Copy debug</button></div>`
@@ -459,27 +441,84 @@ function renderResults(out, meta, outerOuts = []) {
   if (window.matchMedia('(max-width: 640px)').matches) {
     requestAnimationFrame(() => $('views').scrollIntoView({ block: 'start' }));
   }
-  const shareBtn = $('panel-table').querySelector('#share');
-  if (shareBtn) shareBtn.addEventListener('click', shareChart);
-  const dbgBtn = $('panel-chart').querySelector('#dbgcopy');
-  if (dbgBtn) dbgBtn.addEventListener('click', copyDebug);
   maybeRefreshExtras(true);
 }
 
-// Rebuild the catalog selected-table and the lordship deep dive from the
-// current chart state (selection change, syzygy arrival). The catalog
-// browser DOM is left untouched so its scroll and focus survive.
-function refreshCatalogAndLords() {
+// Table sections, one registry entry each: the DOM anchor, the session
+// keys the section depends on, and how to rebuild it from a computed
+// bundle. Every targeted section rebuild goes through refreshSection(s)
+// instead of ad-hoc outerHTML/innerHTML lines, so the rebuild sites are
+// named here and each section's dependencies are visible at its entry.
+// The syzygy subscription refreshes exactly the sections that declare
+// the changed key, so a new dependent section needs no call-site
+// change; preference-driven refreshes (catalog selection, lot options)
+// call refreshSections explicitly, because preferences are not store
+// keys. The catalog browser DOM is deliberately not a section:
+// rebuilding it would lose scroll and focus, so it is left untouched by
+// every refresh path. The live tick keeps its own guarded patch path
+// (dom-patch guards, sect-flip lordship rebuild) and does not go
+// through this registry, so its change-guards stay exact.
+const tableSections = {
+  lots: {
+    anchor: '#panel-table #lots-section',
+    dependsOn: [],
+    render: bundle => buildLotsHTML(bundle.herm, effFmt()),
+    mode: 'outer',
+  },
+  catalog: {
+    anchor: '#panel-table #catalog-selected',
+    dependsOn: ['syzygyLon'],
+    render: bundle => buildCatalogSelectedHTML(bundle.cat.values, effFmt()),
+    mode: 'inner',
+  },
+  lords: {
+    anchor: '#panel-table #lords-section',
+    dependsOn: ['syzygyLon'],
+    render: bundle => buildLordshipHTML(S.out,
+      [...bundle.herm.values, ...bundle.cat.values.filter(v => v.lon != null)], digFull(S.out)),
+    mode: 'outer',
+  },
+  syzygy: {
+    anchor: '#panel-table #syzygy-section',
+    dependsOn: [],
+    render: bundle => buildSyzygyHTML(bundle.syz),
+    mode: 'outer',
+  },
+};
+
+// Rebuild the named sections from the current chart state, computing
+// each bundle part at most once and only when a section needs it, so a
+// single-section refresh costs what its old ad-hoc line cost and a
+// combined refresh costs what the old combined refresh cost. A missing
+// section node is skipped, and a missing chart state rebuilds nothing —
+// the same guards the old call sites carried.
+function refreshSections(ids, extra = {}) {
   if (!S.out || !S.inp || S.instantMs == null) return;
-  const herm = computeLots(S.out, S.instantMs, S.inp.lat, S.inp.lon, lotsOpts);
-  const cat = computeCatalogLots(S.out, S.instantMs, S.inp.lat, S.inp.lon,
-    lotsOpts, catalogSelection, S.syzygyLon);
-  const selDiv = document.querySelector('#panel-table #catalog-selected');
-  if (selDiv) selDiv.innerHTML = buildCatalogSelectedHTML(cat.values, effFmt());
-  const lords = document.querySelector('#panel-table #lords-section');
-  if (lords) lords.outerHTML = buildLordshipHTML(S.out,
-    [...herm.values, ...cat.values.filter(v => v.lon != null)], digFull(S.out));
+  let herm, cat;
+  const bundle = {
+    get herm() { return herm ??= computeLots(S.out, S.instantMs, S.inp.lat, S.inp.lon, lotsOpts); },
+    get cat() { return cat ??= computeCatalogLots(S.out, S.instantMs, S.inp.lat, S.inp.lon, lotsOpts, catalogSelection, S.syzygyLon); },
+    syz: extra.syz ?? null,
+  };
+  for (const id of ids) {
+    const sec = tableSections[id];
+    const el = document.querySelector(sec.anchor);
+    if (!el) continue;
+    const html = sec.render(bundle);
+    if (sec.mode === 'outer') el.outerHTML = html;
+    else el.innerHTML = html;
+  }
 }
+function refreshSection(id, extra = {}) { refreshSections([id], extra); }
+
+// The catalog and lordship sections depend on the prenatal syzygy: when
+// the extras scan lands a new syzygy longitude, exactly the sections
+// that declare it rebuild, from the dependency, not from an imperative
+// call at the producer.
+subscribe(['syzygyLon'], (_state, changed) => {
+  refreshSections(Object.keys(tableSections).filter(id =>
+    tableSections[id].dependsOn.some(k => changed.includes(k))));
+});
 
 // Table extras: prev/next stations (Mercury..Pluto) and the bracketing
 // lunations, from an ephemeris scan around the chart instant using the
@@ -529,13 +568,12 @@ function maybeRefreshExtras(force = false) {
         if (n) n.innerHTML = fmtStn(next);
       }
       const syz = syzygiesAround(scan(jd - 40, 1, 80), eph, jd);
-      const el = document.querySelector('#panel-table #syzygy-section');
-      if (el && tk === extrasToken) el.outerHTML = buildSyzygyHTML(syz);
+      if (tk === extrasToken) refreshSection('syzygy', { syz });
       // Feed the prenatal syzygy to the catalog (Syzygy / Ruler Syzygy
       // lots) and rebuild the catalog table + deep dive with it.
       const newSyzLon = syz.prev ? syz.prev.moonLon : null;
       if (tk === extrasToken && newSyzLon !== S.syzygyLon) {
-        S.syzygyLon = newSyzLon; refreshCatalogAndLords();
+        update({ syzygyLon: newSyzLon });
       }
     } finally { eph.free(); }
   } catch (e) {
@@ -647,13 +685,13 @@ async function initShare(shares) {
 // place, diff table cells, and re-render the chart SVG every tick, swapping it
 // into the DOM only when the markup actually changed (one atomic assignment,
 // never a blank-then-fill).
-let lastChartSVG = '';
-// Tick rebuild caches: last HTML actually swapped into the lots and
-// catalog-selected sections (swap only when the string changes).
-let lastLotsHTML = '';
-let lastCatSelHTML = '';
-
-function setText(el, v) { if (el && el.textContent !== v) el.textContent = v; }
+// Swap guards for the live-tick path: the last markup swapped into the
+// chart wrapper and the lots / catalog-selected sections. Wholesale
+// rebuilds record their output with mark(); the tick swaps only on
+// change. Guarded cell writes live in dom-patch.js.
+const chartGuard = createSwapGuard();
+const lotsGuard = createSwapGuard();
+const catSelGuard = createSwapGuard();
 
 // Speed cell: percentile dot span + .spd-txt span + colored D/R span.
 // setText on the cell would set textContent and delete the dot (the bug
@@ -701,7 +739,6 @@ function updateLiveResults(out, stamp) {
   // Longitude cells wrap the sign in an element-color span: patch via
   // innerHTML (built from our own rows, no user text) when changed so the
   // color keeps following ticks. Same for the glowing magnitude cell.
-  const setHTML = (td, html) => { if (td && td.__h !== html) { td.innerHTML = html; td.__h = html; } };
   const setCell = (tr, idx, text, color) => {
     const td = tr.children[idx];
     setText(td, text);
@@ -750,11 +787,11 @@ function updateLiveResults(out, stamp) {
   // re-parse.
   if (chartVisible) {
     const svg = renderChart(out, { ...chartOpts(), outerWheels: S.outerOuts });
-    if (svg !== lastChartSVG) {
+    const wrap = document.querySelector('#panel-chart .chart-wrap');
+    if (chartGuard.changed(svg)) {
       chartTip.hide();
-      const wrap = document.querySelector('#panel-chart .chart-wrap');
-      if (wrap) wrap.innerHTML = svg;
-      lastChartSVG = svg;
+      if (wrap) chartGuard.applyInner(wrap, svg);
+      else chartGuard.mark(svg);
     }
   }
   // Lots move with the Ascendant; rebuild only when the rendered HTML
@@ -765,7 +802,7 @@ function updateLiveResults(out, stamp) {
   if (lotsEl && S.inp && S.instantMs != null) {
     const lh = buildLotsHTML(
       computeLots(out, S.instantMs, S.inp.lat, S.inp.lon, lotsOpts), effFmt());
-    if (lh !== lastLotsHTML) { lotsEl.outerHTML = lh; lastLotsHTML = lh; }
+    lotsGuard.applyOuter(lotsEl, lh);
   }
   // The selected catalog lots likewise (the browser DOM stays untouched).
   const catSelEl = document.querySelector('#panel-table #catalog-selected');
@@ -773,7 +810,7 @@ function updateLiveResults(out, stamp) {
     const ch = buildCatalogSelectedHTML(
       computeCatalogLots(out, S.instantMs, S.inp.lat, S.inp.lon,
         lotsOpts, catalogSelection, S.syzygyLon).values, effFmt());
-    if (ch !== lastCatSelHTML) { catSelEl.innerHTML = ch; lastCatSelHTML = ch; }
+    catSelGuard.applyInner(catSelEl, ch);
   }
   // The deep dive only changes wholesale at a sect flip (triplicity
   // primaries swap); rebuild it then, not every tick (it also carries
@@ -791,10 +828,10 @@ function updateLiveResults(out, stamp) {
     }
   }
   } // if (tableVisible)
-  S.out = out;
-  // Keep the stored meta stamp fresh so a mid-clock format toggle re-renders
-  // with the current second; the next tick corrects it regardless.
-  S.meta = S.meta.replace(/(<span id="meta-stamp">UTC )[^<]*/, '$1' + stamp);
+  // The stored stamp is written by run() before this branch; the tick
+  // only patches the visible span above, so no markup patching is needed
+  // here to keep a later re-render fresh.
+  update({ out });
 }
 
 // Latest run wins: guards overlapping auto-run/clock/manual calculations.
@@ -814,7 +851,7 @@ async function run(useSwiss, opts = {}) {  const token = ++runToken; // overlapp
   // second is the flicker. Keep the previous render visible until the new one
   // is ready, then patch it in place.
   if (!opts.live && !patchReuse) { $('panel-table').innerHTML = ''; $('panel-chart').innerHTML = ''; delete $('views').dataset.ready; }
-  S.out = null;
+  update({ out: null });
   // The loader appears only while uncached data downloads (never on quiet
   // live ticks): fetchEphe/ensureWasm show it on a cache miss.
   loader.arm(!opts.live);
@@ -832,7 +869,7 @@ async function run(useSwiss, opts = {}) {  const token = ++runToken; // overlapp
   if (!opts.live) $('calc').disabled = true;
   try {
     const mod = await ephe.ensureWasm(status);
-    S.mod = mod; S.useSwiss = useSwiss;
+    update({ mod, useSwiss });
     if (useSwiss) {
       const fpl = epheFile('sepl', inp.y);
       const fmo = epheFile('semo', inp.y);
@@ -858,23 +895,17 @@ async function run(useSwiss, opts = {}) {  const token = ++runToken; // overlapp
     }
     if (token !== runToken) return; // superseded by a newer run
     loader.hide(); // downloads done (or were cached and never shown)
-    S.instantMs = inp.utcMs;
-    S.inp = inp;
     // Live clock ticks and skip steps stamp the exact second; manual/auto
     // runs use minutes. Formatted from the JD, not Date: toISOString is
     // proleptic Gregorian and skews pre-1582 dates.
     const stamp = fmtInstant(inp.utcMs / 86400000 + JD_UNIX_EPOCH, !!(opts.live || opts.skip));
-    const meta = `<span id="meta-stamp">UTC ${stamp}</span> \u00B7 `
-      + `${inp.gregorian ? 'Gregorian' : 'Julian'} calendar \u00B7 `
-      + `${inp.lat.toFixed(4)}\u00B0 ${inp.lat >= 0 ? 'N' : 'S'}, ${Math.abs(inp.lon).toFixed(4)}\u00B0 ${inp.lon >= 0 ? 'E' : 'W'} \u00B7 `
-      + (inp.bce ? 'local mean time \u00B7 ' : '')
-      + (useSwiss ? 'Swiss Ephemeris (JPL-based .se1 files)' : 'Moshier analytic ephemeris (approximate)');
+    update({ instantMs: inp.utcMs, inp, metaStamp: stamp });
     if ((opts.live || patchReuse) && $('views').dataset.ready === '1' && $('meta-stamp') && $('panel-table')) {
-      S.outerOuts = outerOuts;
+      update({ outerOuts });
       updateLiveResults(out, stamp);
       if ($('panel-table').style.display !== 'none') maybeRefreshExtras(false);
     } else {
-      renderResults(out, meta, outerOuts);
+      renderResults(out, outerOuts);
     }
     // Sky tab: push the fresh ephemeris through (no-op while hidden).
     if (skyUI) skyUI.onEphemeris();
@@ -1002,24 +1033,21 @@ function syncSettingsUI() {
     b.addEventListener('click', () => setAngleFmt(b.dataset.setFmt)));
   modal.querySelectorAll('[data-set-size]').forEach(b =>
     b.addEventListener('click', () => {
-      angleMode = b.dataset.setSize === 'compact' ? 'compact' : 'full';
-      writeAngleMode(safeStorage, angleMode);
+      setPref('angleMode', b.dataset.setSize === 'compact' ? 'compact' : 'full');
       syncSettingsUI();
-      if (S.out) renderResults(S.out, S.meta);
+      if (S.out) renderResults(S.out);
     }));
   modal.querySelectorAll('[data-set-glyphs]').forEach(b =>
     b.addEventListener('click', () => {
-      glyphsOn = b.dataset.setGlyphs === 'glyphs';
-      writeGlyphsPref(safeStorage, glyphsOn);
+      setPref('glyphsOn', b.dataset.setGlyphs === 'glyphs');
       syncSettingsUI();
-      if (S.out) renderResults(S.out, S.meta);
+      if (S.out) renderResults(S.out);
     }));
   modal.querySelectorAll('[data-set-stn-time]').forEach(b =>
     b.addEventListener('click', () => {
-      stationTime = b.dataset.setStnTime === 'relative' ? 'relative' : 'absolute';
-      writeStationTime(safeStorage, stationTime);
+      setPref('stationTime', b.dataset.setStnTime === 'relative' ? 'relative' : 'absolute');
       syncSettingsUI();
-      if (S.out) renderResults(S.out, S.meta);
+      if (S.out) renderResults(S.out);
     }));
   syncSettingsUI();
   const open = () => {

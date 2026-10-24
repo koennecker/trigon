@@ -13,6 +13,6 @@
     "moduleResolution": "bundler",
     "strict": false
   },
-  "include": ["sky-data.js", "lots.js", "dignities.js"],
+  "include": ["sky-data.js", "lots.js", "dignities.js", "dom-patch.js", "store.js"],
   "exclude": ["vendor", "swe.js"]
 }
