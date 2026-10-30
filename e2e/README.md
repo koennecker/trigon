@@ -45,7 +45,9 @@ One-off debug/probe scripts were deliberately left out.
 | `E2E_NO_SANDBOX`   | auto when running as root            | `1` adds `--no-sandbox`              |
 
 When the relay is on, `--ignore-certificate-errors` is added automatically
-(egress goes through a MITM proxy). On a sandboxed machine with no direct
+(egress goes through a MITM proxy). When `E2E_RELAY=1`, `harness.launch()`
+auto-starts the relay if nothing listens on the proxy port — no suite may
+assume a pre-running relay. On a sandboxed machine with no direct
 egress, for example:
 
 ```bash
@@ -54,3 +56,29 @@ E2E_CHROME_PATH=/opt/chrome-linux64/chrome \
 E2E_CHROME_ARGS="--disable-dev-shm-usage" \
 ./run.sh
 ```
+
+## Gotchas
+
+- **Escape closes the input drawer.** The drawer closes on a document-level
+  keydown even when a datetime-widget popup consumes the keystroke — the
+  widget preventDefaults but doesn't stop propagation. Helpers that need
+  drawer contents must re-assert the drawer is open (`ensure_drawer`)
+  after any Escape, otherwise focus/click calls silently target a
+  `visibility:hidden` input: `el.focus()` becomes a no-op and keyboard
+  input goes nowhere.
+- **Programmatic focus stands in for a click on the datetime input.**
+  `el.focus()` on `#dt-in` is equivalent to a real click for the
+  datetime widget (segment selection keys off focus + caret, not the
+  mouse), and avoids Playwright click-stability timeouts when the input
+  is scrolled out of view in the drawer. It must run after
+  `scrollIntoView`, and the drawer's open state must be verified first.
+- **Real-mouse clicks catch what `element.click()` misses.** A button
+  can shift out from under the cursor between mousedown and mouseup if
+  nearby content grows — for example, a log appended on input blur
+  inside a fixed-position panel — so a real mouse click misses while
+  Playwright's `element.click()` passes. Click targets near growing
+  content need a real-mouse regression test; a fixed-height region for
+  the growing content is the structural fix.
+- **Known pre-existing breakage:** `live_check.py` fails at
+  `fill("#lat")` because it predates the nav drawer. The failure is in
+  the original suite, not a regression from the E2E integration.

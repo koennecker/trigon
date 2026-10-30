@@ -90,6 +90,9 @@ python3 perf/perf_run.py --url <deployment-url> \
     --label <label> --journal perf/JOURNAL.md
 ```
 
+Compare each run against the journal's earlier entries and investigate
+any regression before calling the deploy done.
+
 ## Layout
 
 ```

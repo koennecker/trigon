@@ -65,6 +65,9 @@ up the same way.
 - `ephe.js` — WASM boundary: loads `swe.wasm`/`swe.js`, exposes
   `computeChart` / `searchCompute` / eclipse wrappers, runs
   `validateEphOut` on every calculation.
+  `validateEphOut` lives here, at the WASM boundary — not in
+  `sky-data.js` with the typedefs. Node tests in `test/ephe.test.js`
+  cover synthetic corruption plus a real-WASM valid case.
 - `swe.wasm`, `swe.js`, `swe.mjs` — the compiled library
   (Emscripten-generated; `swe.js` excluded from type-checking). Rebuilt via
   repo-root `build.sh` from `src_repo/`.
@@ -101,6 +104,12 @@ up the same way.
   exported pure functions at module scope, rendered through by the
   factory; jsdom integration tests in `test/ui-conditions.test.js`
   render them and query by accessible name and selected value.
+  When extracting a builder to module scope, move builders only: the
+  block around them also holds readers/writers/savers
+  (`readConditionRow`, `readConditionGroups`, `saveConditions`) that
+  must stay in place — deleting the whole block breaks the live app in
+  a way node tests cannot see (the factory is never instantiated
+  there), and only Playwright catches it.
 - `meta.js` — the results-head meta line as a pure builder
   (`buildMetaHTML({ metaStamp, inp, useSwiss })`), extracted from
   `app.js` so it executes in tests; jsdom tests in
@@ -196,7 +205,10 @@ up the same way.
   chart instant: "in 42d 6h" / "42d 6h ago"), `rowsToCSV`, planet/sign colors
   (`PLANET_COLORS`, element-colored signs).
 - `sky.js` — Three.js sky viewer (lazy-loaded `vendor/three.module.min.js`;
-  never construct THREE objects at module scope — it loads lazily).
+  never construct THREE objects at module scope — it loads lazily, so
+  a module-scope construction throws "Cannot read properties of null"
+  and takes down the whole Sky view through the `ensureSky` catch;
+  build THREE objects inside `build*` functions).
   On-demand rendering (dirty flag, no 60fps repaint for a static sky),
   overlay rebuilds gated by a 0.02° LST/node quantum, pooled materials.
   The tip/readout builders (`bodyTipHTML`, `starTipHTML`,
@@ -314,6 +326,12 @@ registry, one listener rule. Everything else is a consequence.
 - **Sky rendering is on-demand.** The rAF loop renders only when the dirty
   flag is set; a static sky costs ~zero between ephemeris ticks. See the
   `sky.js` header for the rebuild quantum and material pooling rules.
+- **Sky daylight dome: two factors, not one.** Brightness
+  (`uDayF = sstep(-10,0,h)`) saturates at sunrise by design; the daytime
+  color evolution comes from `uHighF = sstep(0,35,h)` interpolating
+  zenith/horizon through morning colors to the verified noon colors.
+  Never drive the whole day gradient off a single factor that saturates
+  at the horizon — the day sky freezes into one static image.
 - **Screenshots decide visual behavior; green nonvisual tests never certify
   pixels.**
 - `node_modules` must never live inside `site/` (it would deploy).
