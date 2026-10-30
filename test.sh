@@ -5,6 +5,12 @@ set -euo pipefail
 cd "$(dirname "$0")/site"
 
 echo "== node unit tests =="
+# jsdom (for the DOM view tests) is pinned in ../package.json alongside
+# TypeScript; bootstrap both if either is missing, for the same
+# persistence reason as tsc below.
+if [ ! -x ../node_modules/.bin/tsc ] || [ ! -d ../node_modules/jsdom ]; then
+  (cd .. && npm install --no-audit --no-fund)
+fi
 node --test test/*.test.js
 
 echo "== tsc --noEmit --checkJs =="

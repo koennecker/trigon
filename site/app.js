@@ -22,6 +22,7 @@ import {
   buildSyzygyHTML, buildLordshipHTML,
 } from './dignities.js';
 import { epheFile, computeChart, createEpheClient, validateEphOut, ephProvider } from './ephe.js';
+import { computeBazi, buildBaziHTML } from './bazi.js';
 import { createSearchUI } from './search-ui.js';
 import { loadSavedLocation, createLocationUI } from './location.js';
 import { skipFields } from './skip.js';
@@ -412,6 +413,27 @@ function buildMetaHTML() {
     + (S.useSwiss ? 'Swiss Ephemeris (JPL-based .se1 files)' : 'Moshier analytic ephemeris (approximate)');
 }
 
+// BaZi subtable HTML for the root chart, or '' when the state is not
+// usable. The wall time is the chart instant shifted by the chart's
+// timezone offset (tz select; local mean time at the site longitude
+// for BCE, where the select is disabled) — the same wall time the
+// input fields show, reconstructed from the instant so re-renders
+// (angle format, decan method) never depend on picker edits in flight.
+// A bad state returns '' rather than throwing into the render.
+function buildBaziSection() {
+  if (!S.inp || S.instantMs == null) return '';
+  try {
+    const offsetMin = S.inp.bce
+      ? Math.round(lmtOffsetHours(S.inp.lon) * 60)
+      : parseInt($('tz').value, 10);
+    if (!Number.isFinite(offsetMin)) return '';
+    const c = calFromJd(JD_UNIX_EPOCH + S.instantMs / 86400000 + offsetMin / 1440);
+    const hh = Math.floor(c.hourUT);
+    const mi = Math.floor((c.hourUT - hh) * 60 + 1e-3);
+    return buildBaziHTML(computeBazi({ y: c.y, mo: c.mo, d: c.d, hh, mi, offsetMin }));
+  } catch (e) { return ''; }
+}
+
 function renderResults(out, outerOuts = []) {
   update({ out, outerOuts });
   const svg = renderChart(out, { ...chartOpts(), outerWheels: outerOuts });
@@ -429,7 +451,8 @@ function renderResults(out, outerOuts = []) {
     + buildSyzygyHTML(null)
     + (lotsRes ? buildLotsHTML(lotsRes, effFmt()) : '')
     + (catRes ? buildCatalogHTML(catRes.values, catalogSelection, effFmt()) : '')
-    + buildLordshipHTML(out, [...(lotsRes ? lotsRes.values : []), ...(catRes ? catRes.values.filter(v => v.lon != null) : [])], dig);
+    + buildLordshipHTML(out, [...(lotsRes ? lotsRes.values : []), ...(catRes ? catRes.values.filter(v => v.lon != null) : [])], dig)
+    + buildBaziSection();
   $('panel-chart').innerHTML =
       `<div class="chart-wrap">${svg}</div>`
     + `<div class="chart-cap">Whole-sign houses \u00B7 1st house = Ascendant\u2019s sign `
@@ -692,6 +715,7 @@ async function initShare(shares) {
 const chartGuard = createSwapGuard();
 const lotsGuard = createSwapGuard();
 const catSelGuard = createSwapGuard();
+const baziGuard = createSwapGuard();
 
 // Speed cell: percentile dot span + .spd-txt span + colored D/R span.
 // setText on the cell would set textContent and delete the dot (the bug
@@ -803,6 +827,14 @@ function updateLiveResults(out, stamp) {
     const lh = buildLotsHTML(
       computeLots(out, S.instantMs, S.inp.lat, S.inp.lon, lotsOpts), effFmt());
     lotsGuard.applyOuter(lotsEl, lh);
+  }
+  // BaZi pillars change only at double-hour and solar-term boundaries,
+  // so most ticks are a string build with no swap — same guard pattern
+  // as the lots section, so a clock crossing 23:00 still updates it.
+  const baziEl = document.querySelector('#panel-table #bazi-section');
+  if (baziEl) {
+    const bh = buildBaziSection();
+    if (bh) baziGuard.applyOuter(baziEl, bh);
   }
   // The selected catalog lots likewise (the browser DOM stays untouched).
   const catSelEl = document.querySelector('#panel-table #catalog-selected');

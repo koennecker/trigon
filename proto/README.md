@@ -58,6 +58,22 @@ Two flavors:
   century on a 1-day shared grid (Moon pairs need ≤ ~1.4d for the 45° bound);
   sizing evidence for the search windows.
 
+## BaZi
+
+- `bazi_proto.py` — BaZi (Four Pillars) proof of concept, transferred
+  to `site/bazi.js`. Year turns at Lichun (Sun at 315 deg), month at
+  the Jie solar term with the Five Tigers stem rule, day on the
+  continuous 60-day count ((JDN + 49) % 60), hour on the double-hour
+  with the Five Rats stem rule, day advancing at 23:00. Solar terms
+  from Meeus low-precision Sun longitude, iterated to the target
+  longitude; Lichun 2024–2026 lands within 6 minutes of the published
+  Beijing times. Wall time as entered, no true solar time correction.
+- `test_bazi_proto.py` — published examples (1990-06-15 Hong Kong,
+  1988-04-12 Taipei, 2000-06-15), day-cycle anchors (1900-01-01 Jia Xu,
+  1949-10-01 Jia Zi, 2000-01-01 Wu Wu), Lichun/Mangzhong/23:00
+  boundaries, solver convergence for all twelve Jie terms, and
+  Lichun accuracy against known instants.
+
 ## Lots
 
 - `lots_modifiers_proto.py` — the four opt-in tradition variants, each

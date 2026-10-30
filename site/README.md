@@ -46,7 +46,7 @@ BCE Aug 10 *Ephemeris Time*, and sweph range-checks in ET).
 
 | Tab | Module | What it does |
 |---|---|---|
-| Table | `table.js`, `lots.js`, `dignities.js` | Positions, speeds, magnitudes, Hermetic + Hellenistic lots, dignities, stations, lunations |
+| Table | `table.js`, `lots.js`, `dignities.js`, `bazi.js` | Positions, speeds, magnitudes, Hermetic + Hellenistic lots, dignities, stations, lunations, BaZi four pillars |
 | Chart | `chart.js` | Whole-sign SVG wheel: 1st-house cusp at 9 o'clock, longitude increasing counter-clockwise (`θ = 180° + (λ − ref)`) |
 | Aspects | `search.js`, `search-ui.js` | Aspect search with optional AND-of-OR condition groups |
 | Ingresses | `search.js` | Sign ingresses with direction (incl. retrograde re-entries) |
@@ -103,6 +103,17 @@ up the same way.
 - `dignities.js` — decans (Chaldean/Indian toggle), Egyptian bounds,
   Dorothean triplicities, exaltations, D12/D9, whole-sign house lords, and
   the lordship deep dive. (Type-checked.)
+- `bazi.js` — BaZi (Four Pillars) calendar arithmetic, pure: year turns
+  at Lichun, month at the Jie solar term, day on the continuous 60-day
+  count (JDN + 49) mod 60, hour on the double-hour, day advancing at
+  23:00; solar terms from Meeus low-precision Sun longitude (Lichun
+  2024–2026 within 6 minutes of published Beijing times). Wall time
+  as entered, no true solar time correction. `buildBaziHTML` renders
+  the subtable (stem/branch + element/polarity/animal + hidden stems,
+  Day Master note); `app.js` wires it into the table view from the
+  chart instant plus its tz offset, with a live-tick guard so a clock
+  crossing an hour boundary updates it. Verified first in
+  `proto/bazi_proto.py`. (Type-checked.)
 - `table.js` — pure builders for the results table (positions, angles,
   lots, stations, lunations) + `pointTooltip`, the per-point tooltip data
   mirroring a positions-table row.
@@ -266,7 +277,7 @@ registry, one listener rule. Everything else is a consequence.
 - **Type-checking rolls out incrementally.** `jsconfig.json` (`tsc --noEmit
   --checkJs`, `allowJs`) lists only JSDoc-complete files in `include`
   (currently `sky-data.js`, `lots.js`, `dignities.js`, `dom-patch.js`,
-  `store.js`); `vendor/` and `swe.js` are excluded. To adopt a file: annotate until tsc reports zero
+  `store.js`, `bazi.js`); `vendor/` and `swe.js` are excluded. To adopt a file: annotate until tsc reports zero
   errors with it added, then add it to `include`. Run via repo-root
   `./test.sh`.
 - **The live patcher patches, never rebuilds.** On clock ticks, cells are
