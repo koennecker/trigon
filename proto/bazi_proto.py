@@ -1,20 +1,31 @@
 """BaZi (Four Pillars) proof of concept — Python-first verification.
 
-Transferred to site/bazi.js. The rules, in one place:
+Transferred to site/bazi.js. State management, not ephemeris: the
+chart already computed the Sun's ecliptic longitude, so bazi() takes
+that longitude as an input and recomputes nothing. Year and month are
+read straight off it: the year turns when the Sun reaches 315 deg
+(Lichun), and the month branch advances one step every 30 deg from
+there, through the twelve Jie terms. No term-instant search.
+
+The only astronomical function here, sun_longitude(), is the test
+mock: tests that have no chart output use it to synthesize a Sun
+longitude for a test instant. It is not the live path.
+
+Rules, in one place:
 
 - Heavenly Stems (10, in order): Jia, Yi, Bing, Ding, Wu, Ji, Geng,
   Xin, Ren, Gui. Earthly Branches (12, in order): Zi, Chou, Yin, Mao,
   Chen, Si, Wu, Wei, Shen, You, Xu, Hai. A pillar is one stem over one
   branch; the 60-cycle pairs them in order, so cycle index n has
   stem n % 10 and branch n % 12.
-- Year pillar: changes at Lichun (Sun at 315 deg), not Jan 1 or Chinese
-  New Year. Stem = (year - 4) % 10, branch = (year - 4) % 12, with
-  1984 = Jia Zi as the anchor.
-- Month pillar: the branch is set by the solar-term (Jie) month, not
-  the lunar month: Yin starts at Lichun, then one branch per Jie in
-  order, Chou starting at Xiaohan. The stem follows the Five Tigers
-  rule from the year stem: the Yin month's stem is
-  (2 * yearStem + 2) % 10, then one stem per month in order.
+- Year pillar: stem = (pillarYear - 4) % 10, branch =
+  (pillarYear - 4) % 12, with 1984 = Jia Zi as the anchor.
+  pillarYear is the calendar year, except in January/February before
+  the Sun reaches 315 deg, where it is the previous year.
+- Month pillar: segment = floor(((sunLon - 315) mod 360) / 30),
+  branch = (Yin + segment) mod 12, term = the Jie name for that
+  segment; the stem follows the Five Tigers rule, i.e.
+  stem = (firstStem + segment) % 10.
 - Day pillar: a continuous 60-day count. With JDN the Julian Day
   Number of the (effective) calendar date, index = (JDN + 49) % 60.
   Anchors checked in test_bazi_proto.py: 1900-01-01 = Jia Xu,
@@ -27,17 +38,15 @@ Transferred to site/bazi.js. The rules, in one place:
   23:30 birth therefore belongs to the next day's pillar, and its
   hour stem is taken from that next day's stem. The midnight school
   differs for 23:00-24:00 births only.
-- Time model: the input is wall time plus a fixed UTC offset in
-  minutes (Trigon's tz select; for BCE, local mean time). No true
-  solar time correction: a birth near a double-hour boundary can
-  shift by one hour pillar under a longitude correction, and that
-  is a stated limitation, not a silent choice.
-- Solar terms: the Sun's apparent longitude from Meeus' low-precision
-  formula (accuracy ~0.01 deg, ~15 minutes of term time), iterated
-  to the target longitude. Good enough except within about an hour
-  of a term instant, where the pillar is genuinely boundary-sensitive.
-  Term instants are computed in UTC, then shifted by the wall offset
-  before comparison with the wall datetime.
+- Time model: the input is wall time (Trigon's tz select; for BCE,
+  local mean time). No true solar time correction: a birth near a
+  double-hour boundary can shift by one hour pillar under a
+  longitude correction, and that is a stated limitation, not a
+  silent choice.
+- Mock accuracy: sun_longitude() is Meeus' low-precision formula
+  (~0.01 deg). At the published Lichun instants for 2024-2026 it
+  lands within 0.01 deg of 315 deg; it degrades with distance from
+  J2000, which is one reason it is a mock, not the live path.
 
 Run: python3 proto/bazi_proto.py  (prints the three published examples)
 Test: python3 -m unittest proto.test_bazi_proto -v  (from the repo root)
@@ -74,7 +83,6 @@ BRANCHES = [
 ]
 
 # Branch -> hidden stems, main first, then middle, then residual.
-# Classical Cang Gan table.
 HIDDEN_STEMS = {
     "Zi": ["Gui"],
     "Chou": ["Ji", "Gui", "Xin"],
@@ -90,8 +98,10 @@ HIDDEN_STEMS = {
     "Hai": ["Ren", "Jia"],
 }
 
-STEM_BY_NAME = {s[0]: s for s in STEMS}
-BRANCH_BY_NAME = {b[0]: b for b in BRANCHES}
+JIE_NAMES = [
+    "Lichun", "Jingzhe", "Qingming", "Lixia", "Mangzhong", "Xiaoshu",
+    "Liqiu", "Bailu", "Hanlu", "Lidong", "Daxue", "Xiaohan",
+]
 
 
 def stem(i):
@@ -161,23 +171,19 @@ def next_day(y, mo, d):
     return y, mo, d
 
 
-# --- Sun longitude (Meeus low precision) and solar terms ------------------
+# --- Test mock: Sun longitude (Meeus low precision) -----------------------
 
 def _norm360(x):
     return x % 360.0
 
 
-def _wrap180(x):
-    return (x + 180.0) % 360.0 - 180.0
-
-
 def sun_longitude(jd):
-    """Apparent ecliptic longitude of the Sun, degrees, Meeus low
-    precision (~0.01 deg)."""
+    """Test mock only — apparent ecliptic longitude of the Sun,
+    degrees, Meeus low precision (~0.01 deg). Live code uses the
+    chart's Sun longitude instead."""
     t = (jd - 2451545.0) / 36525.0
     l0 = _norm360(280.46646 + t * (36000.76983 + t * 0.0003032))
     m = _norm360(357.52911 + t * (35999.05029 - t * 0.0001537))
-    e = 0.016708634 - t * (0.000042037 + t * 0.0000001267)
     mr = math.radians(m)
     c = (math.sin(mr) * (1.914602 - t * (0.004817 + t * 0.000014))
          + math.sin(2 * mr) * (0.019993 - t * 0.000101)
@@ -187,78 +193,32 @@ def sun_longitude(jd):
     return _norm360(true_lon - 0.00569 - 0.00478 * math.sin(math.radians(omega)))
 
 
-def solar_term_jd(target_lon, approx_jd):
-    """JD (UTC) at which the Sun's apparent longitude reaches
-    target_lon, starting from approx_jd (within a few days). Iterates
-    on the longitude error at ~0.9856 deg/day until < 0.001 deg
-    (~1.5 minutes of term time)."""
-    jd = approx_jd
-    for _ in range(8):
-        err = _wrap180(target_lon - sun_longitude(jd))
-        if abs(err) < 0.001:
-            break
-        jd += err / 0.9856
-    return jd
+def mock_sun(y, mo, d, hh, mi=0, offset_min=0):
+    """Mock Sun longitude for a wall datetime: wall time plus offset
+    -> UTC instant -> mock Sun longitude there."""
+    return sun_longitude(jd_from_cal(y, mo, d, hh + mi / 60.0 - offset_min / 60.0))
 
 
-# The twelve Jie (month-starting) terms, in cycle order from Lichun.
-# (name, target longitude, approx month, approx day, month branch index)
-# Approx dates are the usual calendar dates; Xiaohan's approx year is
-# the January year, i.e. pillar year + 1.
-JIE_TERMS = [
-    ("Lichun", 315, 2, 4, 2),
-    ("Jingzhe", 345, 3, 5, 3),
-    ("Qingming", 15, 4, 4, 4),
-    ("Lixia", 45, 5, 5, 5),
-    ("Mangzhong", 75, 6, 6, 6),
-    ("Xiaoshu", 105, 7, 7, 7),
-    ("Liqiu", 135, 8, 7, 8),
-    ("Bailu", 165, 9, 7, 9),
-    ("Hanlu", 195, 10, 8, 10),
-    ("Lidong", 225, 11, 7, 11),
-    ("Daxue", 255, 12, 7, 0),
-    ("Xiaohan", 285, 1, 5, 1),
-]
+def bazi(y, mo, d, hh, sun_lon, mi=0):
+    """Four pillars for a wall datetime and the Sun's ecliptic
+    longitude at that instant (the chart's Sun longitude).
 
-
-def _term_wall_jd(name, lon, approx_y, approx_mo, approx_d, offset_min):
-    """A term's instant as a wall-time JD: UTC instant shifted by the
-    wall offset, so it compares directly with the wall datetime's JD."""
-    approx = jd_from_cal(approx_y, approx_mo, approx_d, 12)
-    return solar_term_jd(lon, approx) + offset_min / 1440.0
-
-
-def bazi(y, mo, d, hh, mi=0, offset_min=0):
-    """Four pillars for a wall datetime.
-
-    y, mo, d: Gregorian/Julian calendar date as in site/dateapi.js
-    (astronomical year numbering, y < 1 is BCE). hh, mi: wall time
-    0-23 / 0-59. offset_min: fixed UTC offset of that wall time in
-    minutes (Trigon's tz select; for BCE, longitude * 4, i.e. LMT).
-    Returns pillars plus the Day Master and the term instants used.
+    y, mo, d: calendar date as in site/dateapi.js (astronomical year
+    numbering, y < 1 is BCE). hh, mi: wall time 0-23 / 0-59.
+    sun_lon: Sun's ecliptic longitude in degrees.
+    Returns pillars plus the Day Master and the term used.
     """
     if not (0 <= hh <= 23):
         raise ValueError("hour must be 0-23")
-    # Wall datetime as a JD (calendar fields read as if UTC, so term
-    # wall-JDs compare directly).
-    wall_jd = jd_from_cal(y, mo, d, hh + mi / 60.0)
-    # Year pillar: latest Lichun at or before the wall datetime.
-    lichun = {}
-    for cand in (y - 1, y, y + 1):
-        lichun[cand] = _term_wall_jd("Lichun", 315, cand, 2, 4, offset_min)
-    pillar_year = max(c for c, t in lichun.items() if t <= wall_jd)
+    sun_lon = sun_lon % 360.0
+    pillar_year = y - 1 if (mo <= 2 and sun_lon < 315) else y
     year_stem = (pillar_year - 4) % 10
     year_branch = (pillar_year - 4) % 12
-    # Month pillar: latest Jie in the Lichun-to-Lichun cycle.
-    terms = []
-    for (name, lon, am, ad, br) in JIE_TERMS:
-        approx_y = pillar_year + 1 if (am == 1) else pillar_year
-        terms.append((name, br, _term_wall_jd(name, lon, approx_y, am, ad, offset_min)))
-    terms.sort(key=lambda t: t[2])
-    month_name, month_branch, month_term_jd = max(
-        (t for t in terms if t[2] <= wall_jd), key=lambda t: t[2])
+    segment = int(((sun_lon - 315) % 360.0) // 30)
+    month_branch = (2 + segment) % 12
+    month_name = JIE_NAMES[segment]
     first_stem = (2 * year_stem + 2) % 10
-    month_stem = (first_stem + (month_branch - 2) % 12) % 10
+    month_stem = (first_stem + segment) % 10
     # Day pillar: the day advances at 23:00, so 23:00-24:00 belongs
     # to the next calendar day.
     eff_y, eff_mo, eff_d = (y, mo, d)
@@ -291,10 +251,11 @@ def bazi(y, mo, d, hh, mi=0, offset_min=0):
 
 if __name__ == "__main__":
     for label, args in [
-        ("1990-06-15 10:00 Hong Kong (+8)", (1990, 6, 15, 10, 0, 480)),
-        ("1988-04-12 10:00 Taipei (+8)", (1988, 4, 12, 10, 0, 480)),
-        ("2000-06-15 12:00 UTC", (2000, 6, 15, 12, 0, 0)),
+        ("1990-06-15 10:00 Hong Kong (+8)", (1990, 6, 15, 10, 480)),
+        ("1988-04-12 10:00 Taipei (+8)", (1988, 4, 12, 10, 480)),
+        ("2000-06-15 12:00 UTC", (2000, 6, 15, 12, 0)),
     ]:
-        r = bazi(*args)
+        y, mo, d, hh, off = args
+        r = bazi(y, mo, d, hh, mock_sun(y, mo, d, hh, 0, off))
         print(label, "->", r["names"], "|", r["text"],
               "| Day Master:", r["day_master"]["name"], r["day_master"]["element"])

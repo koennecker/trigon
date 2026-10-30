@@ -3,18 +3,31 @@
 // Verified first in proto/bazi_proto.py against published charts
 // (1990-06-15 Hong Kong, 1988-04-12 Taipei, 2000-06-15) and the
 // day-cycle anchors 1900-01-01 = Jia Xu, 1949-10-01 = Jia Zi,
-// 2000-01-01 = Wu Wu. No ephemeris, no DOM in the computation: the
-// only astronomical input is the Sun's apparent longitude from
-// Meeus' low-precision formula, used to locate the solar terms.
-// The view builder (buildBaziHTML) returns a string, like lots.js;
-// app.js wires it into the table view.
+// 2000-01-01 = Wu Wu. The view builder (buildBaziHTML) returns a
+// string, like lots.js; app.js wires it into the table view.
+//
+// State management, not ephemeris: the chart already computed the
+// Sun's ecliptic longitude (out[0], Swiss or Moshier per the chart's
+// engine), so computeBazi takes that longitude as an input and
+// recomputes nothing. Year and month are read straight off it:
+// the year turns when the Sun reaches 315 deg (Lichun), and the
+// month branch advances one step every 30 deg from there, through
+// the twelve Jie terms. No term-instant search, no second ephemeris
+// path, no disagreement between the chart's Sun and the BaZi month.
+// The only astronomical function here, trigSunLongitude, is the
+// test mock: integration tests that have no chart output use it to
+// synthesize a Sun longitude for a test instant. It is not the live
+// path, and live code must not call it.
 //
 // Rules, stated so they can be challenged:
-// - Year pillar turns at Lichun (Sun at 315 deg), not Jan 1 or
-//   Chinese New Year. Stem = (year - 4) % 10, branch = (year - 4) % 12.
-// - Month pillar: the branch is set by the Jie (month-starting)
-//   solar term, Yin at Lichun through Chou at Xiaohan; the stem
-//   follows the Five Tigers rule from the year stem.
+// - Year pillar: stem = (pillarYear - 4) % 10, branch =
+//   (pillarYear - 4) % 12. pillarYear is the calendar year, except
+//   in January/February before the Sun reaches 315 deg, where it is
+//   the previous year (Lichun has not happened yet that year).
+// - Month pillar: segment = floor(((sunLon - 315) mod 360) / 30),
+//   branch = (Yin + segment) mod 12, term = the Jie name for that
+//   segment; the stem follows the Five Tigers rule from the year
+//   stem, i.e. stem = (firstStem + segment) % 10.
 // - Day pillar: a continuous 60-day count, index = (JDN + 49) % 60,
 //   where JDN is the Julian Day Number of the effective date.
 // - Hour pillar: a double-hour, branch = ((hour + 1) // 2) % 12, so
@@ -24,16 +37,12 @@
 //   hour, not at midnight. A 23:30 birth belongs to the next day's
 //   pillar, and its hour stem is taken from that next day's stem.
 //   The midnight school differs for 23:00-24:00 births only.
-// - Time model: the input is wall time plus a fixed UTC offset in
-//   minutes (Trigon's tz select; for BCE, local mean time). No true
-//   solar time correction: a birth near a double-hour boundary can
-//   shift by one hour pillar under a longitude correction, and that
-//   is a stated limitation, not a silent choice.
-// - Solar-term accuracy: Meeus low precision is ~0.01 deg, and the
-//   solver's Lichun instants for 2024-2026 land within 6 minutes
-//   of the published Beijing times. Within about an hour of a term
-//   instant the pillar is genuinely boundary-sensitive.
-import { jdFromCal, wrap180 } from './search.js';
+// - Time model: the input date/time is wall time (Trigon's tz
+//   select; for BCE, local mean time). No true solar time
+//   correction: a birth near a double-hour boundary can shift by
+//   one hour pillar under a longitude correction, and that is a
+//   stated limitation, not a silent choice.
+import { jdFromCal } from './search.js';
 import { norm360 } from './format.js';
 import { isLeapYear, validDate } from './dateapi.js';
 
@@ -41,8 +50,8 @@ import { isLeapYear, validDate } from './dateapi.js';
  * @typedef {{name:string, char:string, element:string, polarity:string}} BaziStem
  * @typedef {{name:string, char:string, element:string, animal:string}} BaziBranch
  * @typedef {{stem:string, stemChar:string, stemElement:string, stemPolarity:string, branch:string, branchChar:string, branchElement:string, animal:string, hidden:string[], text:string, name:string}} BaziPillar
- * @typedef {{y:number, mo:number, d:number, hh:number, mi?:number, offsetMin?:number}} BaziInput
- * @typedef {{pillars:{year:BaziPillar, month:BaziPillar, day:BaziPillar, hour:BaziPillar}, dayMaster:BaziStem, pillarYear:number, monthTerm:string, effectiveDay:{y:number, mo:number, d:number}}} BaziResult
+ * @typedef {{y:number, mo:number, d:number, hh:number, mi?:number}} BaziInput
+ * @typedef {{pillars:{year:BaziPillar, month:BaziPillar, day:BaziPillar, hour:BaziPillar}, dayMaster:BaziStem, pillarYear:number, monthTerm:string, sunLon:number}} BaziResult
  */
 
 /** @type {BaziStem[]} */
@@ -129,10 +138,12 @@ function nextDay(y, mo, d) {
   return { y, mo, d };
 }
 
-/** Apparent ecliptic longitude of the Sun, degrees, Meeus low
- * precision (~0.01 deg). */
+/** Test mock only — apparent ecliptic longitude of the Sun, degrees,
+ * Meeus low precision (~0.01 deg). Live code uses the chart's
+ * out[0] instead; this exists so tests without a chart output can
+ * synthesize a Sun longitude for a test instant. */
 /** @param {number} jd @returns {number} */
-export function sunLongitude(jd) {
+export function trigSunLongitude(jd) {
   const t = (jd - 2451545.0) / 36525.0;
   const l0 = norm360(280.46646 + t * (36000.76983 + t * 0.0003032));
   const m = norm360(357.52911 + t * (35999.05029 - t * 0.0001537));
@@ -144,82 +155,44 @@ export function sunLongitude(jd) {
   return norm360(l0 + c - 0.00569 - 0.00478 * Math.sin(omega * Math.PI / 180));
 }
 
-/** JD (UTC) at which the Sun's apparent longitude reaches targetLon,
- * starting from approxJd (within a few days). Iterates on the
- * longitude error at ~0.9856 deg/day until < 0.001 deg. */
-/** @param {number} targetLon @param {number} approxJd @returns {number} */
-export function solarTermJd(targetLon, approxJd) {
-  let jd = approxJd;
-  for (let i = 0; i < 8; i++) {
-    const err = wrap180(targetLon - sunLongitude(jd));
-    if (Math.abs(err) < 0.001) break;
-    jd += err / 0.9856;
-  }
-  return jd;
-}
-
-// The twelve Jie (month-starting) terms, in cycle order from Lichun:
-// (name, target longitude, approx month, approx day, month branch index).
-// Approx dates are the usual calendar dates; Xiaohan's approx year is
-// the January year, i.e. pillar year + 1.
-/** @type {Array<[string, number, number, number, number]>} */
-const JIE_TERMS = [
-  ['Lichun', 315, 2, 4, 2],
-  ['Jingzhe', 345, 3, 5, 3],
-  ['Qingming', 15, 4, 4, 4],
-  ['Lixia', 45, 5, 5, 5],
-  ['Mangzhong', 75, 6, 6, 6],
-  ['Xiaoshu', 105, 7, 7, 7],
-  ['Liqiu', 135, 8, 7, 8],
-  ['Bailu', 165, 9, 7, 9],
-  ['Hanlu', 195, 10, 8, 10],
-  ['Lidong', 225, 11, 7, 11],
-  ['Daxue', 255, 12, 7, 0],
-  ['Xiaohan', 285, 1, 5, 1],
+// Jie (month-starting) term names, in segment order from Lichun:
+// segment 0 starts at Sun longitude 315 deg, each segment is 30 deg.
+const JIE_NAMES = [
+  'Lichun', 'Jingzhe', 'Qingming', 'Lixia', 'Mangzhong', 'Xiaoshu',
+  'Liqiu', 'Bailu', 'Hanlu', 'Lidong', 'Daxue', 'Xiaohan',
 ];
 
-/** A term's instant as a wall-time JD: the UTC instant shifted by the
- * wall offset, so it compares directly with the wall datetime's JD. */
-/** @param {number} lon @param {number} approxY @param {number} approxMo @param {number} approxD @param {number} offsetMin @returns {number} */
-function termWallJd(lon, approxY, approxMo, approxD, offsetMin) {
-  return solarTermJd(lon, jdFromCal(approxY, approxMo, approxD, 12)) + offsetMin / 1440;
-}
-
 /**
- * Four pillars for a wall datetime. y is the astronomical year
+ * Four pillars for a wall datetime and the Sun's ecliptic longitude
+ * at that instant (the chart's out[0]). y is the astronomical year
  * (y < 1 is BCE, as in dateapi.js); hh is the wall hour 0-23.
  * @param {BaziInput} input
+ * @param {number} sunLonDeg Sun's ecliptic longitude, degrees
  * @returns {BaziResult}
  */
-export function computeBazi(input) {
+export function computeBazi(input, sunLonDeg) {
   const { y, mo, d } = input;
   const hh = input.hh;
   const mi = input.mi ?? 0;
-  const offsetMin = input.offsetMin ?? 0;
   if (!validDate(y, mo, d)) throw new Error('invalid BaZi date');
   if (!Number.isInteger(hh) || hh < 0 || hh > 23) throw new Error('hour must be 0-23');
   if (!Number.isInteger(mi) || mi < 0 || mi > 59) throw new Error('minute must be 0-59');
-  // Wall datetime as a JD (calendar fields read as if UTC, so term
-  // wall-JDs compare directly).
-  const wallJd = jdFromCal(y, mo, d, hh + mi / 60);
-  // Year pillar: latest Lichun at or before the wall datetime.
-  let pillarYear = y - 1;
-  for (const cand of [y - 1, y, y + 1]) {
-    if (termWallJd(315, cand, 2, 4, offsetMin) <= wallJd) pillarYear = cand;
-  }
+  if (!Number.isFinite(sunLonDeg)) throw new Error('Sun longitude is required');
+  const sunLon = norm360(sunLonDeg);
+  // Year pillar: Lichun is in February, so only a January/February
+  // date with the Sun still short of 315 deg belongs to the previous
+  // year. Every other month is already past that year's Lichun.
+  const pillarYear = (mo <= 2 && sunLon < 315) ? y - 1 : y;
   const yearStem = mod(pillarYear - 4, 10);
   const yearBranch = mod(pillarYear - 4, 12);
-  // Month pillar: latest Jie in the Lichun-to-Lichun cycle.
-  let monthTerm = 'Lichun';
-  let monthBranch = 2;
-  let latest = -Infinity;
-  for (const [name, lon, am, ad, br] of JIE_TERMS) {
-    const approxY = am === 1 ? pillarYear + 1 : pillarYear;
-    const t = termWallJd(lon, approxY, am, ad, offsetMin);
-    if (t <= wallJd && t > latest) { latest = t; monthTerm = name; monthBranch = br; }
-  }
+  // Month pillar: 30-deg segments from Lichun. Segment 0 is Yin, so
+  // branch = (2 + segment) % 12 and the Five Tigers stem advances
+  // one per segment from the Yin month's stem.
+  const segment = Math.floor(mod(sunLon - 315, 360) / 30);
+  const monthBranch = mod(2 + segment, 12);
+  const monthTerm = JIE_NAMES[segment];
   const firstStem = mod(2 * yearStem + 2, 10);
-  const monthStem = mod(firstStem + mod(monthBranch - 2, 12), 10);
+  const monthStem = mod(firstStem + segment, 10);
   // Day pillar: the day advances at 23:00, so 23:00-24:00 belongs
   // to the next calendar day.
   let eff = { y, mo, d };
@@ -241,7 +214,7 @@ export function computeBazi(input) {
     dayMaster: STEMS[dayStem],
     pillarYear,
     monthTerm,
-    effectiveDay: eff,
+    sunLon,
   };
 }
 
@@ -271,10 +244,10 @@ export function buildBaziHTML(result) {
     + `<p class="lots-note">Day Master: ${dayMaster.char} ${dayMaster.name} `
     + `(${dayMaster.element} ${dayMaster.polarity}) — the day stem, the self. `
     + `Month term: ${result.monthTerm}.</p>`
-    + `<p class="lots-note">Year turns at Lichun, not Jan 1 or Chinese New Year; `
-    + `month turns at the solar-term month; day advances at 23:00, the start of `
-    + `the Zi hour. Times are the chart's wall time as entered, with no true `
-    + `solar time correction.</p>`
+    + `<p class="lots-note">Year and month are read from the chart's Sun longitude: `
+    + `year turns at 315° (Lichun), month advances every 30° from there; `
+    + `day advances at 23:00, the start of the Zi hour. Times are the chart's `
+    + `wall time as entered, with no true solar time correction.</p>`
     + `<div class="tbl-scroll"><table class="lots-table"><thead><tr>`
     + `<th>Pillar</th><th>Stem</th><th>Branch</th><th>Hidden stems</th></tr></thead><tbody>`;
   for (const [label, p] of rows) {

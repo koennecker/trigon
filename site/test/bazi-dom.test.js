@@ -15,11 +15,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { computeBazi, buildBaziHTML } from '../bazi.js';
+import { computeBazi, buildBaziHTML, trigSunLongitude } from '../bazi.js';
+import { jdFromCal } from '../search.js';
 
+// View tests have no chart output, so the Sun longitude is mocked
+// with the trig function: wall datetime plus offset -> UTC instant
+// -> mock Sun longitude there. Live code passes the chart's out[0]
+// instead; the view builder itself is identical either way.
 function render(input) {
+  const offsetMin = input.offsetMin ?? 0;
+  const sunLon = trigSunLongitude(jdFromCal(
+    input.y, input.mo, input.d, input.hh + (input.mi ?? 0) / 60 - offsetMin / 60));
   const dom = new JSDOM('<!DOCTYPE html><body><div id="panel-table"></div></body>');
-  dom.window.document.getElementById('panel-table').innerHTML = buildBaziHTML(computeBazi(input));
+  dom.window.document.getElementById('panel-table').innerHTML =
+    buildBaziHTML(computeBazi(input, sunLon));
   return dom.window.document;
 }
 
@@ -64,8 +73,9 @@ test('hidden-stem cells list main, middle, residual stems', () => {
 test('a re-render with a different instant replaces, not appends, rows', () => {
   const panel = new JSDOM('<!DOCTYPE html><body><div id="panel-table"></div></body>')
     .window.document.getElementById('panel-table');
-  panel.innerHTML = buildBaziHTML(computeBazi({ y: 1990, mo: 6, d: 15, hh: 10, offsetMin: 480 }));
-  panel.innerHTML = buildBaziHTML(computeBazi({ y: 1988, mo: 4, d: 12, hh: 10, offsetMin: 480 }));
+  const mock = (y, mo, d, hh) => trigSunLongitude(jdFromCal(y, mo, d, hh - 8));
+  panel.innerHTML = buildBaziHTML(computeBazi({ y: 1990, mo: 6, d: 15, hh: 10 }, mock(1990, 6, 15, 10)));
+  panel.innerHTML = buildBaziHTML(computeBazi({ y: 1988, mo: 4, d: 12, hh: 10 }, mock(1988, 4, 12, 10)));
   const r = [...panel.querySelectorAll('#bazi-section tbody tr')].map(tr => tr.children[0].textContent);
   assert.deepEqual(r, ['Year', 'Month', 'Day', 'Hour']);
   // Stem and branch cells are separate, so the pillars are checked

@@ -103,16 +103,21 @@ up the same way.
 - `dignities.js` — decans (Chaldean/Indian toggle), Egyptian bounds,
   Dorothean triplicities, exaltations, D12/D9, whole-sign house lords, and
   the lordship deep dive. (Type-checked.)
-- `bazi.js` — BaZi (Four Pillars) calendar arithmetic, pure: year turns
-  at Lichun, month at the Jie solar term, day on the continuous 60-day
-  count (JDN + 49) mod 60, hour on the double-hour, day advancing at
-  23:00; solar terms from Meeus low-precision Sun longitude (Lichun
-  2024–2026 within 6 minutes of published Beijing times). Wall time
-  as entered, no true solar time correction. `buildBaziHTML` renders
-  the subtable (stem/branch + element/polarity/animal + hidden stems,
-  Day Master note); `app.js` wires it into the table view from the
-  chart instant plus its tz offset, with a live-tick guard so a clock
-  crossing an hour boundary updates it. Verified first in
+- `bazi.js` — BaZi (Four Pillars) calendar arithmetic, pure: year and
+  month are read from the chart's Sun longitude (out[0]) — year turns
+  at 315 deg (Lichun), month advances one 30-deg Jie segment from
+  there; day on the continuous 60-day count (JDN + 49) mod 60, hour on
+  the double-hour, day advancing at 23:00. It recomputes no ephemeris:
+  the Sun longitude is state the chart already computed, so a second
+  ephemeris path cannot disagree with the chart. The Meeus
+  low-precision function `trigSunLongitude` is a test mock only, for
+  tests with no chart output (Lichun 2024–2026 within 0.01 deg of
+  315 deg). Wall time as entered, no true solar time correction.
+  `buildBaziHTML` renders the subtable (stem/branch +
+  element/polarity/animal + hidden stems, Day Master note); `app.js`
+  wires it into the table view from the chart output and the wall
+  time reconstructed from the instant, with a live-tick guard so a
+  clock crossing an hour boundary updates it. Verified first in
   `proto/bazi_proto.py`. (Type-checked.)
 - `table.js` — pure builders for the results table (positions, angles,
   lots, stations, lunations) + `pointTooltip`, the per-point tooltip data

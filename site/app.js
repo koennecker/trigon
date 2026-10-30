@@ -419,9 +419,12 @@ function buildMetaHTML() {
 // for BCE, where the select is disabled) — the same wall time the
 // input fields show, reconstructed from the instant so re-renders
 // (angle format, decan method) never depend on picker edits in flight.
+// The Sun's longitude is NOT recomputed here: it is out[0], already
+// in the chart output, from whichever engine (Swiss/Moshier) computed
+// the chart. BaZi is a state consumer, not a second ephemeris path.
 // A bad state returns '' rather than throwing into the render.
-function buildBaziSection() {
-  if (!S.inp || S.instantMs == null) return '';
+function buildBaziSection(out) {
+  if (!out || !S.inp || S.instantMs == null) return '';
   try {
     const offsetMin = S.inp.bce
       ? Math.round(lmtOffsetHours(S.inp.lon) * 60)
@@ -430,7 +433,7 @@ function buildBaziSection() {
     const c = calFromJd(JD_UNIX_EPOCH + S.instantMs / 86400000 + offsetMin / 1440);
     const hh = Math.floor(c.hourUT);
     const mi = Math.floor((c.hourUT - hh) * 60 + 1e-3);
-    return buildBaziHTML(computeBazi({ y: c.y, mo: c.mo, d: c.d, hh, mi, offsetMin }));
+    return buildBaziHTML(computeBazi({ y: c.y, mo: c.mo, d: c.d, hh, mi }, out[0]));
   } catch (e) { return ''; }
 }
 
@@ -452,7 +455,7 @@ function renderResults(out, outerOuts = []) {
     + (lotsRes ? buildLotsHTML(lotsRes, effFmt()) : '')
     + (catRes ? buildCatalogHTML(catRes.values, catalogSelection, effFmt()) : '')
     + buildLordshipHTML(out, [...(lotsRes ? lotsRes.values : []), ...(catRes ? catRes.values.filter(v => v.lon != null) : [])], dig)
-    + buildBaziSection();
+    + buildBaziSection(out);
   $('panel-chart').innerHTML =
       `<div class="chart-wrap">${svg}</div>`
     + `<div class="chart-cap">Whole-sign houses \u00B7 1st house = Ascendant\u2019s sign `
@@ -833,7 +836,7 @@ function updateLiveResults(out, stamp) {
   // as the lots section, so a clock crossing 23:00 still updates it.
   const baziEl = document.querySelector('#panel-table #bazi-section');
   if (baziEl) {
-    const bh = buildBaziSection();
+    const bh = buildBaziSection(out);
     if (bh) baziGuard.applyOuter(baziEl, bh);
   }
   // The selected catalog lots likewise (the browser DOM stays untouched).
