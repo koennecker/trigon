@@ -104,6 +104,65 @@ const OVERLAY_DEFS = [
 // spins with LST, so these are ignored entirely there.
 const HORIZON_FRAME = ['horizon', 'meridian', 'primeVertical', 'cardinals'];
 
+
+// ---- Pure tip/readout builders (module scope) ------------------------------
+// These were closure functions inside createSkyUI; they take only data,
+// so they are exported pure builders and the factory renders through
+// them unchanged. starTipHTML takes the lore object explicitly (the
+// factory passes SD.loreForStar(s)); the builder itself does no lookup.
+function signOf(lonDeg) {
+  const s = SD.SIGNS[Math.floor(SD.norm360(lonDeg) / 30) % 12];
+  const d = SD.norm360(lonDeg) % 30;
+  return `${s.glyph} ${d.toFixed(1)}°`;
+}
+
+export function bodyTipHTML(u) {
+  if (u.kind === 'angle') {
+    return `<b>${u.name}</b><br><span class="dim">${signOf(u.lon)} · alt ${u.alt.toFixed(1)}°</span>`;
+  }
+  const { def } = u;
+  const retro = u.speed < 0 ? ' <span class="dim">℞</span>' : '';
+  return `<b><span style="color:${def.color}">${def.glyph}</span> ${def.name}</b>${retro}<br>`
+    + `<span class="dim">${signOf(u.lon)}${u.house ? ` · house ${u.house}` : ''}<br>`
+    + `alt ${u.alt >= 0 ? '+' : ''}${u.alt.toFixed(1)}° · az ${u.az.toFixed(1)}°</span>`;
+}
+
+export function starTipHTML(s, lore) {
+  const aka = s.altNames.length ? `<br><span class="dim">aka ${s.altNames.join(', ')}</span>` : '';
+  const loreHtml = lore
+    ? `<br><span class="trad">${lore.traditions.join(' · ')}</span><br>${lore.text}`
+    : '';
+  return `<b>${s.name}</b> <span class="dim">${s.bayer} · mag ${s.mag.toFixed(2)}</span>${aka}<br>`
+    + `<span class="dim">RA ${fmtRA(s.ra0)} Dec ${fmtDec(s.dec0)} (J2000)</span>${loreHtml}`;
+}
+
+function fmtRA(raDeg) {
+  const h = raDeg / 15, hh = Math.floor(h), mm = Math.floor((h - hh) * 60);
+  return `${String(hh).padStart(2, '0')}h${String(mm).padStart(2, '0')}m`;
+}
+
+function fmtDec(decDeg) {
+  const s = decDeg < 0 ? '−' : '+', a = Math.abs(decDeg);
+  return `${s}${String(Math.floor(a)).padStart(2, '0')}°${String(Math.floor((a % 1) * 60)).padStart(2, '0')}′`;
+}
+
+export function skyReadoutHTML(o) {
+  const d = new Date(o.utcMs);
+  const hh = String(d.getUTCHours()).padStart(2, '0'),
+        mi = String(d.getUTCMinutes()).padStart(2, '0'),
+        ss = String(d.getUTCSeconds()).padStart(2, '0');
+  return `<b>UTC ${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')} ${hh}:${mi}:${ss}</b>`
+    + ` · LST ${o.lst.toFixed(2)}° · ${Math.abs(o.lat).toFixed(2)}°${o.lat >= 0 ? 'N' : 'S'} ${Math.abs(o.lon).toFixed(2)}°${o.lon >= 0 ? 'E' : 'W'}`
+    + (o.sunAlt != null ? ` · Sun ${o.sunAlt >= 0 ? '+' : ''}${o.sunAlt.toFixed(1)}°` : '')
+    + ` · ayanāṃśa ${o.ayanamsa.toFixed(2)}°`
+    + (o.viewMode === 'sphere' ? ' · sphere view' : '')
+    + (o.lockName ? ` · tracking ${o.lockName}` : '');
+}
+
+export function lockButtonHTML(def) {
+  return `🔒 tracking <b>${def.name}</b> · unlock`;
+}
+
 export function createSkyUI({ getEphemeris, store, setLoading, log }) {
   let THREE = null;
   let ready = false, visible = false, failed = null, aimed = false;
@@ -739,7 +798,7 @@ export function createSkyUI({ getEphemeris, store, setLoading, log }) {
     if (lockSel) lockSel.value = def ? String(def.id) : ''; // stay in sync
     if (!def) { lockBtn.style.display = 'none'; return; }
     lockBtn.style.display = '';
-    lockBtn.innerHTML = `🔒 tracking <b>${def.name}</b> · unlock`;
+    lockBtn.innerHTML = lockButtonHTML(def);
     lockBtn.setAttribute('aria-label', `Camera is tracking ${def.name}; activate to unlock`);
   }
 
@@ -919,11 +978,6 @@ export function createSkyUI({ getEphemeris, store, setLoading, log }) {
     }
   }
 
-  function signOf(lonDeg) {
-    const s = SD.SIGNS[Math.floor(SD.norm360(lonDeg) / 30) % 12];
-    const d = SD.norm360(lonDeg) % 30;
-    return `${s.glyph} ${d.toFixed(1)}°`;
-  }
 
   function updateBodies(out, jd, eps, lst, lat) {
     for (const g of bodies) {
@@ -1444,27 +1498,14 @@ export function createSkyUI({ getEphemeris, store, setLoading, log }) {
           mi = String(d.getUTCMinutes()).padStart(2, '0'),
           ss = String(d.getUTCSeconds()).padStart(2, '0');
     const lockDefNow = lockDef();
-    readoutEl.innerHTML =
-      `<b>UTC ${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')} ${hh}:${mi}:${ss}</b>`
-      + ` · LST ${lst.toFixed(2)}° · ${Math.abs(inp.lat).toFixed(2)}°${inp.lat >= 0 ? 'N' : 'S'} ${Math.abs(inp.lon).toFixed(2)}°${inp.lon >= 0 ? 'E' : 'W'}`
-      + (cur.sunAlt != null ? ` · Sun ${cur.sunAlt >= 0 ? '+' : ''}${cur.sunAlt.toFixed(1)}°` : '')
-      + ` · ayanāṃśa ${SD.lahiriAyanamsa(jd).toFixed(2)}°`
-      + (viewMode === 'sphere' ? ' · sphere view' : '')
-      + (lockDefNow ? ` · tracking ${lockDefNow.name}` : '');
+    readoutEl.innerHTML = skyReadoutHTML({ utcMs, lst, lat: inp.lat, lon: inp.lon,
+      sunAlt: cur.sunAlt, ayanamsa: SD.lahiriAyanamsa(jd), viewMode,
+      lockName: lockDefNow ? lockDefNow.name : null });
   }
 
   // ------------------------------------------------------------------ hover
 
   function hideTip() { if (tipEl) tipEl.style.display = 'none'; }
-
-  function fmtRA(raDeg) {
-    const h = raDeg / 15, hh = Math.floor(h), mm = Math.floor((h - hh) * 60);
-    return `${String(hh).padStart(2, '0')}h${String(mm).padStart(2, '0')}m`;
-  }
-  function fmtDec(decDeg) {
-    const s = decDeg < 0 ? '−' : '+', a = Math.abs(decDeg);
-    return `${s}${String(Math.floor(a)).padStart(2, '0')}°${String(Math.floor((a % 1) * 60)).padStart(2, '0')}′`;
-  }
 
   function doHover() {
     if (!mouse || !ready || !visible) { hideTip(); return; }
@@ -1484,31 +1525,10 @@ export function createSkyUI({ getEphemeris, store, setLoading, log }) {
     const hitS = pts ? raycaster.obj.intersectObject(pts, false)[0] : null;
     if (hitS && hitS.index !== undefined) {
       const s = starIndex[hitS.index];
-      showTip(mouse.cx, mouse.cy, starTipHTML(s));
+      showTip(mouse.cx, mouse.cy, starTipHTML(s, SD.loreForStar(s)));
       return;
     }
     hideTip();
-  }
-
-  function bodyTipHTML(u) {
-    if (u.kind === 'angle') {
-      return `<b>${u.name}</b><br><span class="dim">${signOf(u.lon)} · alt ${u.alt.toFixed(1)}°</span>`;
-    }
-    const { def } = u;
-    const retro = u.speed < 0 ? ' <span class="dim">℞</span>' : '';
-    return `<b><span style="color:${def.color}">${def.glyph}</span> ${def.name}</b>${retro}<br>`
-      + `<span class="dim">${signOf(u.lon)}${u.house ? ` · house ${u.house}` : ''}<br>`
-      + `alt ${u.alt >= 0 ? '+' : ''}${u.alt.toFixed(1)}° · az ${u.az.toFixed(1)}°</span>`;
-  }
-
-  function starTipHTML(s) {
-    const lore = SD.loreForStar(s);
-    const aka = s.altNames.length ? `<br><span class="dim">aka ${s.altNames.join(', ')}</span>` : '';
-    const loreHtml = lore
-      ? `<br><span class="trad">${lore.traditions.join(' · ')}</span><br>${lore.text}`
-      : '';
-    return `<b>${s.name}</b> <span class="dim">${s.bayer} · mag ${s.mag.toFixed(2)}</span>${aka}<br>`
-      + `<span class="dim">RA ${fmtRA(s.ra0)} Dec ${fmtDec(s.dec0)} (J2000)</span>${loreHtml}`;
   }
 
   function showTip(x, y, html) {

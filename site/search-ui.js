@@ -1,8 +1,9 @@
 // search-ui.js — Aspects + Stations search tabs.
 //
 // The pure pieces (aspectSigns, readRangeValues, renderAspectHTML,
-// renderRetrogradeHTML) take explicit arguments and return values, so they
-// unit-test in node. The async runners are DOM- and WASM-bound; they live
+// renderRetrogradeHTML, condFieldsHTML, condRowHTML, condGroupHTML)
+// take explicit arguments and return values, so they unit-test in node.
+// The async runners are DOM- and WASM-bound; they live
 // in createSearchUI(env), which injects the app-shell dependencies
 // (element lookup, date fields, the ephemeris client, loader-arm flag).
 import {
@@ -320,6 +321,84 @@ function parallelWorthIt(nSteps) {
 //   ensureWasm(onStatus), ensureSearchFiles(mod, useSwiss, jd0, jd1, onStatus, isCancelled),
 //   JD_1CE, getLoaderArmed(), setLoaderArmed(bool)
 // }
+
+// ---- Aspect condition builders (pure, module scope) ----------------------
+// These were closure functions inside createSearchUI; they take no env,
+// only the condition spec, so they are exported pure builders and the
+// factory renders through them unchanged.
+const refOpts = sel => [['a', 'A (first of pair)'], ['b', 'B (second of pair)'],
+  ...SEARCH_BODIES.map((b, i) => [String(i), b])]
+  .map(([v, l]) => `<option value="${v}"${String(sel) === v ? ' selected' : ''}>${l}</option>`).join('');
+const bodyOpts = (sel, max = 10) => SEARCH_BODIES.slice(0, max + 1)
+  .map((b, i) => `<option value="${i}"${sel === i ? ' selected' : ''}>${b}</option>`).join('');
+const numOpts = (list, sel) => list
+  .map(([v, l]) => `<option value="${v}"${sel === v ? ' selected' : ''}>${l}</option>`).join('');
+const SIGN_VALUE_OPTS = {
+  sign: SIGNS.map((s, i) => [i, s]),
+  ruler: [[0, 'Sun'], [1, 'Moon'], [2, 'Mercury'], [3, 'Venus'], [4, 'Mars'], [5, 'Jupiter'], [6, 'Saturn']],
+  element: SIGN_ELEMENT_NAMES.map((s, i) => [i, s]),
+  quad: SIGN_QUAD_NAMES.map((s, i) => [i, s]),
+  same: [['a', 'same sign as A'], ['b', 'same sign as B']],
+};
+
+export function condFieldsHTML(c) {
+  switch (c.type) {
+    case 'aspect':
+      return `<select class="f-from" aria-label="From body">${refOpts(c.from ?? 'a')}</select>`
+        + `<select class="f-deg" aria-label="Aspect">${ASPECTS.map(a =>
+          `<option value="${a.deg}"${c.deg === a.deg ? ' selected' : ''}>${a.glyph} ${a.name} ${a.deg}°</option>`).join('')}</select>`
+        + `<select class="f-to" aria-label="To body">${refOpts(c.to ?? 'b')}</select>`
+        + `<select class="f-amode" aria-label="Aspect mode">`
+        + `<option value="orb"${c.mode !== 'signbased' ? ' selected' : ''}>within orb</option>`
+        + `<option value="signbased"${c.mode === 'signbased' ? ' selected' : ''}>by sign (no orb)</option></select>`
+        + `<input class="f-orb" type="number" min="0" max="30" step="0.5" value="${c.orb ?? 3}"`
+        + ` aria-label="Orb in degrees"${c.mode === 'signbased' ? ' disabled' : ''}>`;
+    case 'motion':
+      return `<select class="f-body" aria-label="Body">${bodyOpts(c.body ?? 2)}</select>`
+        + `<select class="f-dir" aria-label="Direction">`
+        + `<option value="direct"${c.dir !== 'retrograde' ? ' selected' : ''}>is direct</option>`
+        + `<option value="retrograde"${c.dir === 'retrograde' ? ' selected' : ''}>is retrograde</option></select>`;
+    case 'speed':
+      return `<select class="f-body" aria-label="Body">${bodyOpts(c.body ?? 2, 9)}</select>`
+        + `<span class="dim">speed percentile</span>`
+        + `<input class="f-min" type="number" min="0" max="100" step="1" placeholder="min" value="${c.min ?? ''}" aria-label="Minimum percentile">`
+        + `<span class="dim">to</span>`
+        + `<input class="f-max" type="number" min="0" max="100" step="1" placeholder="max" value="${c.max ?? ''}" aria-label="Maximum percentile">`;
+    case 'phase':
+      return `<select class="f-body" aria-label="Body">${bodyOpts(c.body ?? 3, 10).replace('value="0"', 'value="0" disabled')}</select>`
+        + `<select class="f-phase" aria-label="Phase">`
+        + [['morning', 'morning (oriental)'], ['evening', 'evening (occidental)'],
+           ['combust', 'combust (≤8.5° from Sun)'], ['beams', 'under the beams (≤15°)']]
+          .map(([v, l]) => `<option value="${v}"${c.phase === v ? ' selected' : ''}>${l}</option>`).join('') + '</select>';
+    default: // sign
+      return `<select class="f-who" aria-label="Whose sign">${refOpts(c.who ?? 'a')}</select>`
+        + `<select class="f-mode" aria-label="Sign filter">`
+        + [['sign', 'is in sign'], ['ruler', 'is in a sign ruled by'], ['element', 'is in element'],
+           ['quad', 'is in quadruplicity'], ['same', 'is co-present with']]
+          .map(([v, l]) => `<option value="${v}"${(c.mode ?? 'sign') === v ? ' selected' : ''}>${l}</option>`).join('')
+        + `</select>`
+        + `<select class="f-value" aria-label="Sign filter value">${numOpts(SIGN_VALUE_OPTS[c.mode ?? 'sign'], c.value ?? 0)}</select>`;
+  }
+}
+
+export function condRowHTML(c) {
+  return `<div class="cond-row">`
+    + `<select class="cond-type" aria-label="Condition type">`
+    + [['sign', 'Sign'], ['aspect', 'Aspect'], ['motion', 'Motion'], ['speed', 'Speed'], ['phase', 'Heliacal phase']]
+      .map(([v, l]) => `<option value="${v}"${c.type === v ? ' selected' : ''}>${l}</option>`).join('') + '</select>'
+    + `<span class="cond-fields">${condFieldsHTML(c)}</span>`
+    + `<button type="button" class="mini ghost cond-remove">remove</button></div>`;
+}
+
+export function condGroupHTML(group, gi) {
+  const subs = group.map((c, ci) =>
+    (ci ? '<div class="cond-or">OR</div>' : '') + condRowHTML(c)).join('');
+  return `<div class="cond-group"><div class="cond-group-head"><span>Group ${gi + 1} — any of (OR)</span>`
+    + `<button type="button" class="mini ghost cond-group-remove">remove group</button></div>`
+    + `<div class="cond-subs">${subs}</div>`
+    + `<button type="button" class="mini ghost cond-add-or">add OR condition</button></div>`;
+}
+
 export function createSearchUI(env) {
   const { el, readDateFields, writeDateFields, ensureWasm, ensureSearchFiles, JD_1CE } = env;
 
@@ -380,69 +459,6 @@ export function createSearchUI(env) {
 
   // ---- Aspect conditions (optional ANDed modifiers) ----------------------
   const COND_KEY = 'trigon.aspconds.v1';
-  const refOpts = sel => [['a', 'A (first of pair)'], ['b', 'B (second of pair)'],
-    ...SEARCH_BODIES.map((b, i) => [String(i), b])]
-    .map(([v, l]) => `<option value="${v}"${String(sel) === v ? ' selected' : ''}>${l}</option>`).join('');
-  const bodyOpts = (sel, max = 10) => SEARCH_BODIES.slice(0, max + 1)
-    .map((b, i) => `<option value="${i}"${sel === i ? ' selected' : ''}>${b}</option>`).join('');
-  const numOpts = (list, sel) => list
-    .map(([v, l]) => `<option value="${v}"${sel === v ? ' selected' : ''}>${l}</option>`).join('');
-  const SIGN_VALUE_OPTS = {
-    sign: SIGNS.map((s, i) => [i, s]),
-    ruler: [[0, 'Sun'], [1, 'Moon'], [2, 'Mercury'], [3, 'Venus'], [4, 'Mars'], [5, 'Jupiter'], [6, 'Saturn']],
-    element: SIGN_ELEMENT_NAMES.map((s, i) => [i, s]),
-    quad: SIGN_QUAD_NAMES.map((s, i) => [i, s]),
-    same: [['a', 'same sign as A'], ['b', 'same sign as B']],
-  };
-
-  function condFieldsHTML(c) {
-    switch (c.type) {
-      case 'aspect':
-        return `<select class="f-from" aria-label="From body">${refOpts(c.from ?? 'a')}</select>`
-          + `<select class="f-deg" aria-label="Aspect">${ASPECTS.map(a =>
-            `<option value="${a.deg}"${c.deg === a.deg ? ' selected' : ''}>${a.glyph} ${a.name} ${a.deg}°</option>`).join('')}</select>`
-          + `<select class="f-to" aria-label="To body">${refOpts(c.to ?? 'b')}</select>`
-          + `<select class="f-amode" aria-label="Aspect mode">`
-          + `<option value="orb"${c.mode !== 'signbased' ? ' selected' : ''}>within orb</option>`
-          + `<option value="signbased"${c.mode === 'signbased' ? ' selected' : ''}>by sign (no orb)</option></select>`
-          + `<input class="f-orb" type="number" min="0" max="30" step="0.5" value="${c.orb ?? 3}"`
-          + ` aria-label="Orb in degrees"${c.mode === 'signbased' ? ' disabled' : ''}>`;
-      case 'motion':
-        return `<select class="f-body" aria-label="Body">${bodyOpts(c.body ?? 2)}</select>`
-          + `<select class="f-dir" aria-label="Direction">`
-          + `<option value="direct"${c.dir !== 'retrograde' ? ' selected' : ''}>is direct</option>`
-          + `<option value="retrograde"${c.dir === 'retrograde' ? ' selected' : ''}>is retrograde</option></select>`;
-      case 'speed':
-        return `<select class="f-body" aria-label="Body">${bodyOpts(c.body ?? 2, 9)}</select>`
-          + `<span class="dim">speed percentile</span>`
-          + `<input class="f-min" type="number" min="0" max="100" step="1" placeholder="min" value="${c.min ?? ''}" aria-label="Minimum percentile">`
-          + `<span class="dim">to</span>`
-          + `<input class="f-max" type="number" min="0" max="100" step="1" placeholder="max" value="${c.max ?? ''}" aria-label="Maximum percentile">`;
-      case 'phase':
-        return `<select class="f-body" aria-label="Body">${bodyOpts(c.body ?? 3, 10).replace('value="0"', 'value="0" disabled')}</select>`
-          + `<select class="f-phase" aria-label="Phase">`
-          + [['morning', 'morning (oriental)'], ['evening', 'evening (occidental)'],
-             ['combust', 'combust (≤8.5° from Sun)'], ['beams', 'under the beams (≤15°)']]
-            .map(([v, l]) => `<option value="${v}"${c.phase === v ? ' selected' : ''}>${l}</option>`).join('') + '</select>';
-      default: // sign
-        return `<select class="f-who" aria-label="Whose sign">${refOpts(c.who ?? 'a')}</select>`
-          + `<select class="f-mode" aria-label="Sign filter">`
-          + [['sign', 'is in sign'], ['ruler', 'is in a sign ruled by'], ['element', 'is in element'],
-             ['quad', 'is in quadruplicity'], ['same', 'is co-present with']]
-            .map(([v, l]) => `<option value="${v}"${(c.mode ?? 'sign') === v ? ' selected' : ''}>${l}</option>`).join('')
-          + `</select>`
-          + `<select class="f-value" aria-label="Sign filter value">${numOpts(SIGN_VALUE_OPTS[c.mode ?? 'sign'], c.value ?? 0)}</select>`;
-    }
-  }
-
-  function condRowHTML(c) {
-    return `<div class="cond-row">`
-      + `<select class="cond-type" aria-label="Condition type">`
-      + [['sign', 'Sign'], ['aspect', 'Aspect'], ['motion', 'Motion'], ['speed', 'Speed'], ['phase', 'Heliacal phase']]
-        .map(([v, l]) => `<option value="${v}"${c.type === v ? ' selected' : ''}>${l}</option>`).join('') + '</select>'
-      + `<span class="cond-fields">${condFieldsHTML(c)}</span>`
-      + `<button type="button" class="mini ghost cond-remove">remove</button></div>`;
-  }
 
   const parseRef = v => (v === 'a' || v === 'b') ? v : parseInt(v, 10);
   const numOrNull = v => v === '' ? null : parseFloat(v);
@@ -488,15 +504,6 @@ export function createSearchUI(env) {
   }
 
   const defaultCond = () => ({ type: 'sign', who: 'a', mode: 'sign', value: 0 });
-
-  function condGroupHTML(group, gi) {
-    const subs = group.map((c, ci) =>
-      (ci ? '<div class="cond-or">OR</div>' : '') + condRowHTML(c)).join('');
-    return `<div class="cond-group"><div class="cond-group-head"><span>Group ${gi + 1} — any of (OR)</span>`
-      + `<button type="button" class="mini ghost cond-group-remove">remove group</button></div>`
-      + `<div class="cond-subs">${subs}</div>`
-      + `<button type="button" class="mini ghost cond-add-or">add OR condition</button></div>`;
-  }
 
   function renderConditions(groups) {
     el('asp-conds').innerHTML = groups.map(condGroupHTML).join('');

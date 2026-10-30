@@ -12,10 +12,9 @@ import {
 } from './dateapi.js';
 import { openDatePicker } from './datepicker.js';
 import { attachDateTime } from './datetime.js';
-import { fmtLon, fmtCoord, fmtSignPos, rowsToCSV, gotoButtonHTML,
-  fmtRelativeInstant } from './format.js';
+import { fmtLon, fmtCoord, rowsToCSV } from './format.js';
 import { parseShareHashString, shareLink, shareLinks } from './share.js';
-import { tableRows, buildTableHTML, speedIndicatorHTML, angleRows, pointTooltip, swapGlyphChars } from './table.js';
+import { tableRows, buildTableHTML, speedIndicatorHTML, angleRows, pointTooltip, swapGlyphChars, stationCellHTML } from './table.js';
 import { computeLots, buildLotsHTML, buildLotOptionsHTML, sunAltitudeDeg,
   computeCatalogLots, buildCatalogHTML, buildCatalogSelectedHTML } from './lots.js';
 import {
@@ -23,6 +22,7 @@ import {
 } from './dignities.js';
 import { epheFile, computeChart, createEpheClient, validateEphOut, ephProvider } from './ephe.js';
 import { computeBazi, buildBaziHTML } from './bazi.js';
+import { buildMetaHTML } from './meta.js';
 import { createSearchUI } from './search-ui.js';
 import { loadSavedLocation, createLocationUI } from './location.js';
 import { skipFields } from './skip.js';
@@ -400,18 +400,11 @@ function chartTipData(g) {
 }
 
 // Meta line HTML, built in render from data, never stored as markup:
-// the stored stamp, the chart input (calendar, latitude, longitude, BCE
-// flag), and the engine. The stamp span keeps its id so the live tick
-// can patch its text, and copyDebug can read it back.
-function buildMetaHTML() {
-  const inp = S.inp;
-  if (!inp) return '';
-  return `<span id="meta-stamp">UTC ${S.metaStamp}</span> \u00B7 `
-    + `${inp.gregorian ? 'Gregorian' : 'Julian'} calendar \u00B7 `
-    + `${inp.lat.toFixed(4)}\u00B0 ${inp.lat >= 0 ? 'N' : 'S'}, ${Math.abs(inp.lon).toFixed(4)}\u00B0 ${inp.lon >= 0 ? 'E' : 'W'} \u00B7 `
-    + (inp.bce ? 'local mean time \u00B7 ' : '')
-    + (S.useSwiss ? 'Swiss Ephemeris (JPL-based .se1 files)' : 'Moshier analytic ephemeris (approximate)');
-}
+// the stored stamp, the chart input, and the engine (see meta.js).
+// The stamp span keeps its id so the live tick can patch its text,
+// and copyDebug can read it back.
+const buildMetaHTMLForRender = () =>
+  buildMetaHTML({ metaStamp: S.metaStamp, inp: S.inp, useSwiss: S.useSwiss });
 
 // BaZi subtable HTML for the root chart, or '' when the state is not
 // usable. The wall time is the chart instant shifted by the chart's
@@ -443,7 +436,7 @@ function renderResults(out, outerOuts = []) {
   chartGuard.mark(svg);
   $('views-head').innerHTML =
       `<div class="res-brand"><img class="logo" src="logo.svg" alt="">Trigon</div>`
-    + `<div class="meta" style="margin-bottom:4px">${buildMetaHTML()}</div>`;
+    + `<div class="meta" style="margin-bottom:4px">${buildMetaHTMLForRender()}</div>`;
   const dig = digFull(out);
   lordsSectShown = dig.isDay;
   const lotsRes = S.inp && S.instantMs != null
@@ -574,18 +567,7 @@ function maybeRefreshExtras(force = false) {
       // vs ~500 or less for every other body), so ±850 days guarantees
       // every body has a station on both sides of the instant.
       const grid = scan(jd - 850, 5, 340);
-      const fmtStn = s => {
-        if (!s) return '—';
-        // The button's JD never changes with the display mode: a
-        // relative label still sets the chart to the absolute station
-        // instant, and the absolute instant rides in the button's
-        // title/aria-label for hover and screen readers.
-        const abs = fmtInstant(s.jd);
-        const label = stationTime === 'relative' ? fmtRelativeInstant(s.jd, jd) : abs;
-        const str = `${s.type} ${fmtSignPos(s.lon, 'dms', glyphsOn)} `
-          + gotoButtonHTML(s.jd, label, stationTime === 'relative' ? abs : null);
-        return glyphsOn ? swapGlyphChars(str) : str;
-      };
+      const fmtStn = s => stationCellHTML(s, { stationTime, refJd: jd, glyphs: glyphsOn });
       for (let ib = 2; ib <= 9; ib++) {
         const { prev, next } = stationsAround(grid, eph, ib, jd);
         const p = document.querySelector(`#panel-table td.stn-prev[data-ib="${ib}"]`);

@@ -7,7 +7,8 @@
 // Node is not displayed anywhere.)
 // No DOM: both functions return strings / row structs and take the angle
 // format explicitly, so they import cleanly in node for tests.
-import { fmtLon, fmtDec, fmtSpeedDR, motionOf, fmtMag, dash, csvDownloadButton, BODY_GLYPHS, SIGN_GLYPHS, PLANET_COLORS, signColor } from './format.js';
+import { fmtLon, fmtDec, fmtSpeedDR, motionOf, fmtMag, dash, csvDownloadButton, BODY_GLYPHS, SIGN_GLYPHS, PLANET_COLORS, signColor, fmtSignPos, gotoButtonHTML, fmtRelativeInstant } from './format.js';
+import { fmtInstant } from './dateapi.js';
 import { bodyGlyphHTML, signGlyphHTML } from './glyphs.js';
 import { speedPercentile, speedZ, speedColor } from './speed-stats.js';
 import { magBrightness } from './mag-stats.js';
@@ -270,6 +271,20 @@ export function speedIndicatorHTML(r) {
   const z = `${r.spdZ >= 0 ? '+' : ''}${r.spdZ.toFixed(2)}`;
   return `<span class="spdind" style="background:${r.spdColor}" title="${r.spdTip}"`
     + ` data-pct="${r.spdPct.toFixed(1)}" data-z="${z}"></span>`;
+}
+
+// Station cell content for the positions table, filled asynchronously
+// by the app after an ephemeris scan around the instant. The button's
+// JD never changes with the display mode: a relative label still sets
+// the chart to the absolute station instant, and the absolute instant
+// rides in the button's title/aria-label for hover and screen readers.
+export function stationCellHTML(s, { stationTime = 'absolute', refJd = null, glyphs = false } = {}) {
+  if (!s) return '—';
+  const abs = fmtInstant(s.jd);
+  const label = stationTime === 'relative' ? fmtRelativeInstant(s.jd, refJd) : abs;
+  const str = `${s.type} ${fmtSignPos(s.lon, 'dms', glyphs)} `
+    + gotoButtonHTML(s.jd, label, stationTime === 'relative' ? abs : null);
+  return glyphs ? swapGlyphChars(str) : str;
 }
 
 export function buildTableHTML(out, fmt = 'dms', dig = undefined, opts = {}) {
