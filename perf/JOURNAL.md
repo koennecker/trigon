@@ -130,3 +130,6 @@ environments expose no true GPU-utilization counter.
 | 20261030-040341 | bazi-sunlon | table-clock | 2.0 | 3.1 | 1.1 | 4.5 | 5.5 | 937 | 1.0 | 0 | 20.0 |
 | 20261030-040341 | bazi-sunlon | sky-clock | 2.7 | 3.0 | 2.6 | 5.8 | 7.6 | 1059 | 1.0 | 0 | 20.0 |
 | 20261030-040341 | bazi-sunlon | sky-static | 0.9 | 1.9 | 0.8 | 2.9 | 7.5 | 1065 | 0.0 | 0 | 20.0 |
+| 20261030-122046 | jsdom-ui-tests | table-clock | 1.9 | 3.0 | 1.1 | 4.3 | 5.5 | 940 | 1.0 | 0 | 20.0 |
+| 20261030-122046 | jsdom-ui-tests | sky-clock | 3.1 | 3.1 | 3.2 | 6.6 | 8.0 | 1073 | 1.0 | 0 | 20.0 |
+| 20261030-122046 | jsdom-ui-tests | sky-static | 1.5 | 2.0 | 0.8 | 3.1 | 7.8 | 1068 | 0.0 | 0 | 20.0 |
