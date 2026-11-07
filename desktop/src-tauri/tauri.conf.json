@@ -24,6 +24,9 @@
   "bundle": {
     "active": true,
     "category": "Education",
+    "icon": [
+      "icons/icon.png"
+    ],
     "longDescription": "Trigon computes astrological charts with the Swiss Ephemeris (WebAssembly), locally, with profiles and saved charts stored in SQLite.",
     "shortDescription": "Swiss Ephemeris astrology charts, local-first",
     "targets": [
