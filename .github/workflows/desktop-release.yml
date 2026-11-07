@@ -18,6 +18,11 @@
 
 name: Desktop Release
 
+# The default GITHUB_TOKEN is read-only for contents on this repo;
+# uploading release assets needs write access.
+permissions:
+  contents: write
+
 on:
   push:
     tags:
