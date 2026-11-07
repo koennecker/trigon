@@ -1,0 +1,54 @@
+# Desktop release — Windows and macOS (Linux is built locally for now)
+#
+# Builds the Tauri desktop app on Windows and macOS runners and uploads
+# the artifacts to the GitHub Release for the tag. The runners' built-in
+# GITHUB_TOKEN can upload release assets, which the stored PAT used from
+# this VM cannot (it is honored for api.github.com only, not
+# uploads.github.com).
+#
+# Triggered two ways:
+#   - push a version tag (v*): builds and attaches to that release
+#     (creating it if it does not exist yet)
+#   - manual dispatch: pick a tag to attach to, e.g. v0.0.1 for the
+#     Windows/macOS builds of an already-released version
+#
+# macOS builds are Apple Silicon only (macos-latest is arm64); there is
+# no Intel build yet. macOS artifacts are unsigned — no Apple Developer
+# certificate is wired in — so Gatekeeper will warn on first open.
+
+name: Desktop Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to attach artifacts to (e.g. v0.0.1)"
+        required: true
+        default: "v0.0.1"
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v0
+        with:
+          projectPath: desktop/src-tauri
+          tagName: ${{ inputs.tag || github.ref_name }}
+          releaseName: "Trigon Desktop ${{ inputs.tag || github.ref_name }}"
+          releaseBody: "Desktop release of Trigon — a thin Tauri 2 wrapper around the Trigon web app, with profiles, settings, and saved charts stored in local SQLite. The Swiss Ephemeris runs in WebAssembly, exactly as on the web. The web app is live at https://trigon.pages.dev."
+          releaseDraft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

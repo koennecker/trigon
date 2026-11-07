@@ -93,6 +93,29 @@ xvfb-run cargo tauri dev
 Desktop releases live on GitHub Releases in the Trigon repo,
 versioned independently of the web app. The first release is `v0.0.1`.
 
+**Windows and macOS are built by GitHub Actions**
+(`.github/workflows/desktop-release.yml`, `tauri-action`): the
+runners' built-in token can upload release assets, which the stored
+PAT used from this VM cannot (it is honored for `api.github.com`
+only, not `uploads.github.com`). Trigger it two ways:
+
+- Push a version tag (`v*`): builds and attaches to that release,
+  creating it if it does not exist.
+- Manual dispatch: run the workflow with a `tag` input, e.g. `v0.0.1`,
+  to attach Windows/macOS builds to an already-released version.
+
+The matrix is `macos-latest` and `windows-latest`. macOS builds are
+Apple Silicon only (`macos-latest` is arm64); there is no Intel build
+yet. macOS artifacts are unsigned — no Apple Developer certificate
+is wired in — so Gatekeeper warns on first open.
+
+**Linux is built locally for now** (`cargo tauri build` from
+`desktop/`, `.deb` + `.AppImage` + `.rpm` since `bundle.targets`
+is `all`; `rpm` must be installed for the local build), then the
+assets are attached to the release. A future step is to add
+`ubuntu-latest` to the Actions matrix so all three platforms build
+in CI.
+
 1. A major Trigon update lands on the web (the usual pipeline:
    feature commit, source-zip rebuild, perf run, deploy).
 2. Bump the desktop version in `src-tauri/Cargo.toml` and
@@ -102,6 +125,8 @@ versioned independently of the web app. The first release is `v0.0.1`.
 3. Commit and push (one logical change per push, same message locally
    and to `gh-push`).
 4. Create the GitHub Release `vX.Y.Z` with the built Linux artifacts
-   (`.deb`, `.AppImage`) attached.
+   (`.deb`, `.AppImage`) attached, and trigger the Actions workflow
+   for the Windows and macOS artifacts (or push the `vX.Y.Z` tag
+   first and let the workflow create the release).
 5. Future major updates repeat steps 1–4; minor desktop-only fixes
    bump the patch version and release the same way.
