@@ -3,13 +3,13 @@
 Trigon as a desktop app: a thin Tauri 2 wrapper around the Trigon web
 app in `../site/`, running in the system webview, with profiles,
 settings, and saved charts stored in SQLite instead of
-IndexedDB/localStorage. There is no separate desktop repo: this
-directory lives in the Trigon repo, and the desktop release follows
-each major Trigon update.
+IndexedDB/localStorage. The desktop release follows each major Trigon
+update.
 
 - Web app: https://trigon.pages.dev
-- Desktop version: `0.0.1` — GitHub Releases in the Trigon repo carry
-  the desktop builds (see Release process below).
+- Desktop version: set in `src-tauri/Cargo.toml` and
+  `src-tauri/tauri.conf.json` together — GitHub Releases in the Trigon
+  repo carry the desktop builds (see Release process below).
 
 ## What the wrapper owns, and nothing else
 
@@ -28,17 +28,31 @@ disk. It owns no astrology.
   (`swe.wasm`) exactly as on the web, and searches keep their Web
   Worker parallelization. That parallelization is the speedup; a
   second, Rust-native ephemeris would be a second source of truth
-  for no non-trivial gain. (Blake decision, 2026-11-07.)
+  for no non-trivial gain.
 
 ## Layout
 
-- `src-tauri/` — the Rust wrapper: `src/main.rs` (the six commands
-  `kv_get`/`kv_put`/`kv_delete`/`kv_get_all`/`ephe_get`/`ephe_put`),
-  `tauri.conf.json` (product `Trigon`, version `0.0.1`, identifier
-  `com.koennecker.trigon`, `frontendDist` `../../site` — relative to
-  `src-tauri/`, where the config file lives),
-  `capabilities/`, `build.rs`, `icons/icon.png` (generated from the
-  Trigon logo).
+- `src-tauri/` — the Rust wrapper:
+  - `Cargo.toml` — package `trigon-desktop`, dependencies (Tauri 2
+    with the `custom-protocol` feature, `rusqlite`, `serde`,
+    `serde_json`, `base64`), release profile (LTO, single codegen unit).
+  - `Cargo.lock` — pinned dependency tree.
+  - `src/main.rs` — the six commands `kv_get`/`kv_put`/`kv_delete`/
+    `kv_get_all`/`ephe_get`/`ephe_put`, the `kv` table, and the
+    `ephe/` directory setup.
+  - `tauri.conf.json` — product `Trigon`, identifier
+    `com.koennecker.trigon`, `frontendDist` `../../site` (relative to
+    `src-tauri/`, where the config file lives), window 1280×900,
+    bundle targets `all`, the content-security policy, and the icon
+    list.
+  - `capabilities/default.json` — the capability set: `core:default`
+    plus `core:window:allow-set-title`.
+  - `build.rs` — the Tauri build script.
+  - `icons/` — the platform bundle icons (`icon.png`, `icon.ico`,
+    `icon.icns`, `32x32.png`, `128x128.png`, `128x128@2x.png`),
+    matching the site logo.
+  - `gen/` — Tauri-generated code, not checked in.
+  - `target/` — the Cargo build directory, not checked in.
 - `../site/desktop.js` — the only frontend file that knows about
   Tauri. `isDesktop()` checks `window.__TAURI__` (enabled by
   `withGlobalTauri` in `tauri.conf.json`); `createTauriBackend()`
@@ -54,8 +68,8 @@ disk. It owns no astrology.
 
 ## Build
 
-Prerequisites: Rust (stable, under `~/.cargo`), Tauri Linux system
-libraries (`libwebkit2gtk-4.1-dev`, `libgtk-3-dev`,
+Prerequisites: Rust (stable), Tauri Linux system libraries
+(`libwebkit2gtk-4.1-dev`, `libgtk-3-dev`,
 `libayatana-appindicator3-dev`, `librsvg2-dev`, `libsoup-3.0-dev` on
 Ubuntu/Debian). The Tauri CLI is installed with
 `cargo install tauri-cli --version "^2"`.
@@ -95,7 +109,7 @@ xvfb-run cargo tauri dev
 ## Release process
 
 Desktop releases live on GitHub Releases in the Trigon repo,
-versioned independently of the web app. The first release is `v0.0.1`.
+versioned independently of the web app.
 
 **Windows and macOS** build in CI (`.github/workflows/desktop-release.yml`):
 the matrix is `macos-latest` and `windows-latest`. macOS builds target
@@ -116,8 +130,8 @@ and the artifacts are attached to the release.
    `src-tauri/tauri.conf.json` together, rebuild, and smoke-test
    under Xvfb (create a profile, save a named chart, quit, relaunch,
    confirm it persisted in SQLite).
-3. Commit and push (one logical change per push, same message locally
-   and to `gh-push`).
+3. Commit and push, one logical change per push, with the same message
+   on the local commit and the push.
 4. Create the GitHub Release `vX.Y.Z` with the built Linux artifacts
    (`.deb`, `.AppImage`, `.rpm`) attached, and trigger the workflow
    for the Windows and macOS artifacts (or push the `vX.Y.Z` tag
