@@ -1,20 +1,18 @@
-# Desktop release — Windows and macOS (Linux is built locally for now)
+# Desktop release — Windows and macOS
 #
-# Builds the Tauri desktop app on Windows and macOS runners and uploads
-# the artifacts to the GitHub Release for the tag. The runners' built-in
-# GITHUB_TOKEN can upload release assets, which the stored PAT used from
-# this VM cannot (it is honored for api.github.com only, not
-# uploads.github.com).
+# Builds the desktop app on the Windows and macOS runners and uploads
+# the artifacts to the GitHub Release for the tag. Linux artifacts are
+# built on the developer machine and attached to the release separately.
 #
 # Triggered two ways:
-#   - push a version tag (v*): builds and attaches to that release
-#     (creating it if it does not exist yet)
-#   - manual dispatch: pick a tag to attach to, e.g. v0.0.1 for the
-#     Windows/macOS builds of an already-released version
+#   - push a version tag (v*): builds and attaches to that release,
+#     creating it if it does not exist
+#   - manual dispatch: run the workflow with a tag input to attach
+#     builds to the release for that tag
 #
-# macOS builds are Apple Silicon only (macos-latest is arm64); there is
-# no Intel build yet. macOS artifacts are unsigned — no Apple Developer
-# certificate is wired in — so Gatekeeper will warn on first open.
+# The matrix is macos-latest and windows-latest. macOS builds target
+# arm64 and are unsigned, so the operating system shows its standard
+# security warning on first open.
 
 name: Desktop Release
 
@@ -52,7 +50,7 @@ jobs:
           projectPath: desktop/src-tauri
           tagName: ${{ inputs.tag || github.ref_name }}
           releaseName: "Trigon Desktop ${{ inputs.tag || github.ref_name }}"
-          releaseBody: "Desktop release of Trigon — a thin Tauri 2 wrapper around the Trigon web app, with profiles, settings, and saved charts stored in local SQLite. The Swiss Ephemeris runs in WebAssembly, exactly as on the web. The web app is live at https://trigon.pages.dev."
+          releaseBody: "Desktop build of Trigon — the web app in a desktop shell, with profiles, settings, and saved charts stored in local SQLite. The Swiss Ephemeris runs in WebAssembly, as on the web. The web app is live at https://trigon.pages.dev."
           releaseDraft: false
           prerelease: false
         env:

@@ -18,7 +18,7 @@ disk. It owns no astrology.
 
 - **SQLite** (`trigon.db` in the app data dir): one table, `kv(store,
   key, value TEXT as JSON)`, over the stores `settings`, `profiles`,
-  `charts`, `meta`. The frontend's persistence layer is already a
+  `charts`, `meta`. The frontend's persistence layer is a
   key-value abstraction over those stores, so the SQLite backend maps
   onto it with no logic change in the app.
 - **Ephemeris files**: `.se1` files live under `<app data>/ephe/`,
@@ -88,7 +88,7 @@ xvfb-run cargo tauri dev
   from `raw.githubusercontent.com` exactly as on the web, then cached.
 - Web data does not migrate automatically: a desktop install is a
   fresh profile. Moving web IndexedDB data into desktop SQLite needs
-  an explicit export/import, which does not exist yet.
+  an explicit export/import.
 - If the Tauri bridge is absent, the app behaves exactly as the web
   app (IndexedDB), so the same `site/` ships to Pages and desktop.
 
@@ -97,28 +97,18 @@ xvfb-run cargo tauri dev
 Desktop releases live on GitHub Releases in the Trigon repo,
 versioned independently of the web app. The first release is `v0.0.1`.
 
-**Windows and macOS are built by GitHub Actions**
-(`.github/workflows/desktop-release.yml`, `tauri-action`): the
-runners' built-in token can upload release assets, which the stored
-PAT used from this VM cannot (it is honored for `api.github.com`
-only, not `uploads.github.com`). Trigger it two ways:
+**Windows and macOS** build in CI (`.github/workflows/desktop-release.yml`):
+the matrix is `macos-latest` and `windows-latest`. macOS builds target
+arm64 and are unsigned, so the operating system shows its standard
+security warning on first open. The workflow is triggered by pushing a
+version tag (`v*`), which builds and attaches to that release (creating
+it if it does not exist), or by manual dispatch with a `tag` input to
+attach builds to the release for that tag.
 
-- Push a version tag (`v*`): builds and attaches to that release,
-  creating it if it does not exist.
-- Manual dispatch: run the workflow with a `tag` input, e.g. `v0.0.1`,
-  to attach Windows/macOS builds to an already-released version.
-
-The matrix is `macos-latest` and `windows-latest`. macOS builds are
-Apple Silicon only (`macos-latest` is arm64); there is no Intel build
-yet. macOS artifacts are unsigned — no Apple Developer certificate
-is wired in — so Gatekeeper warns on first open.
-
-**Linux is built locally for now** (`cargo tauri build` from
-`desktop/`, `.deb` + `.AppImage` + `.rpm` since `bundle.targets`
-is `all`; `rpm` must be installed for the local build), then the
-assets are attached to the release. A future step is to add
-`ubuntu-latest` to the Actions matrix so all three platforms build
-in CI.
+**Linux** builds on the developer machine (`cargo tauri build` from
+`desktop/`, `.deb` + `.AppImage` + `.rpm` since `bundle.targets` is
+`all`; `rpm` must be installed for the local build — see Build above),
+and the artifacts are attached to the release.
 
 1. A major Trigon update lands on the web (the usual pipeline:
    feature commit, source-zip rebuild, perf run, deploy).
@@ -129,8 +119,8 @@ in CI.
 3. Commit and push (one logical change per push, same message locally
    and to `gh-push`).
 4. Create the GitHub Release `vX.Y.Z` with the built Linux artifacts
-   (`.deb`, `.AppImage`) attached, and trigger the Actions workflow
+   (`.deb`, `.AppImage`, `.rpm`) attached, and trigger the workflow
    for the Windows and macOS artifacts (or push the `vX.Y.Z` tag
    first and let the workflow create the release).
-5. Future major updates repeat steps 1–4; minor desktop-only fixes
-   bump the patch version and release the same way.
+5. Major updates repeat steps 1–4; minor desktop-only fixes bump the
+   patch version and release the same way.
