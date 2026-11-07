@@ -65,9 +65,13 @@ Ubuntu/Debian). The Tauri CLI is installed with
 cargo tauri build              # from desktop/; bundles in src-tauri/target/release/bundle/
 ```
 
-The Linux bundle targets are `.deb` and `.AppImage`. macOS and Windows
-builds need their own runners; the Rust code is platform-independent
-and the frontend is unchanged.
+The Linux bundle targets are `.deb`, `.AppImage`, and `.rpm`
+(`bundle.targets` is `all`). The `.rpm` needs the `rpm` tool
+installed; without it, build Linux-only targets explicitly:
+
+```bash
+cargo tauri build --config '{"bundle":{"targets":["deb","appimage"]}}'
+```
 
 To run a dev build under Xvfb:
 
