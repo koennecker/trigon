@@ -11,6 +11,10 @@ echo "== node unit tests =="
 if [ ! -x ../node_modules/.bin/tsc ] || [ ! -d ../node_modules/jsdom ]; then
   (cd .. && npm install --no-audit --no-fund)
 fi
+# The Swiss .se1 tests in wasm-search.test.js run only when SE1_DIR is
+# set; the files are cached in test/data, so point at them unless the
+# caller already points somewhere else.
+export SE1_DIR="${SE1_DIR:-$PWD/test/data}"
 node --test test/*.test.js
 
 echo "== tsc --noEmit --checkJs =="
