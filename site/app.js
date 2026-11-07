@@ -32,6 +32,7 @@ import { createChartStyle } from './chart-style.js';
 import { createOuterWheels } from './outer-wheels.js';
 import { createChartTooltip } from './chart-tooltip.js';
 import { createPersistence, createIndexedDBBackend, DEFAULT_PROFILE_ID } from './persistence.js';
+import { createTauriBackend, isDesktop } from './desktop.js';
 import { setText, setHTML, createSwapGuard } from './dom-patch.js';
 import {
   S, update, subscribe, initPrefs, setPref,
@@ -65,7 +66,10 @@ const safeStorage = {
 let persistence = null;
 let prefsStorage = safeStorage;
 try {
-  persistence = createPersistence(createIndexedDBBackend());
+  // Desktop: SQLite via the Tauri wrapper when present; the web
+  // keeps IndexedDB. No Rust ephemeris: the WASM path is the only
+  // ephemeris, and searches keep their Web Worker parallelization.
+  persistence = createPersistence(isDesktop() ? createTauriBackend() : createIndexedDBBackend());
   await persistence.init(safeStorage);
   prefsStorage = persistence.prefsStorage;
 } catch (e) {

@@ -135,6 +135,18 @@ up the same way.
   localStorage and is shared across profiles; the drawer open state
   likewise stays local. Unit tests in `test/persistence.test.js`
   (in-memory backend) and Playwright in `e2e/profiles_e2e.py`.
+- `desktop.js` — the Tauri desktop wrapper adapter (see `desktop/`
+  in the repo root). The only frontend file that knows about Tauri:
+  `isDesktop()` checks `window.__TAURI__`, `createTauriBackend()`
+  implements the `persistence.js` backend interface over the Rust
+  `kv_*` commands (SQLite), and `epheGetDesktop`/`ephePutDesktop`
+  do the same for `.se1` files over `ephe_*` (filesystem, base64).
+  Safe to import on the web: nothing Tauri is touched unless
+  `isDesktop()` is true, so `app.js` selects the SQLite backend
+  only under Tauri and `ephe-store.js` branches the same way. No
+  ephemeris runs in Rust: the WASM path is the only ephemeris, and
+  searches keep their Web Worker parallelization. Unit tests in
+  `test/desktop.test.js` against a mocked invoke layer. (Type-checked.)
 - `lots.js` — the 10 Hermetic lots (Paulus set, day/night by true Sun
   altitude) + `computeCatalogLots` for the Hellenistic selection, incl. the
   four opt-in tradition variants. (Type-checked.)

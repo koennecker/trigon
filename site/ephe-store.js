@@ -3,6 +3,8 @@
 // best-effort migration moves any files left in the old cache into IndexedDB
 // and then deletes that cache, so already-downloaded files are not fetched again.
 
+import { isDesktop, epheGetDesktop, ephePutDesktop } from './desktop.js';
+
 const DB_NAME = 'swisseph-ephe';
 const STORE = 'files';
 const OLD_CACHE = 'swisseph-ephe-v1';
@@ -23,6 +25,7 @@ function openDb() {
 // Returns the stored ArrayBuffer, or null on miss. Rejects when IndexedDB
 // itself is unavailable (e.g. blocked storage in a sandboxed iframe).
 export async function epheGet(name) {
+  if (isDesktop()) return epheGetDesktop(name);
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(name);
@@ -32,6 +35,7 @@ export async function epheGet(name) {
 }
 
 export async function ephePut(name, buffer) {
+  if (isDesktop()) return ephePutDesktop(name, buffer);
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
@@ -45,6 +49,7 @@ export async function ephePut(name, buffer) {
 // One-time migration of the old Cache API entries into IndexedDB.
 // Best-effort: never throws.
 export async function migrateEpheCache(onStatus) {
+  if (isDesktop()) return; // desktop has no Cache API store to migrate
   try {
     if (!('caches' in window)) return;
     if (!(await caches.has(OLD_CACHE))) return;

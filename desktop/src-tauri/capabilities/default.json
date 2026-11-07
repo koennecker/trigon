@@ -1,0 +1,1 @@
+{"$schema":"https://schema.tauri.app/config/2","description":"Default capabilities: the app window and its custom Rust commands.","identifier":"default","permissions":["core:default","core:window:allow-set-title"],"windows":["main"]}
