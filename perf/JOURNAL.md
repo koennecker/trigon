@@ -133,3 +133,6 @@ environments expose no true GPU-utilization counter.
 | 20261030-122046 | jsdom-ui-tests | table-clock | 1.9 | 3.0 | 1.1 | 4.3 | 5.5 | 940 | 1.0 | 0 | 20.0 |
 | 20261030-122046 | jsdom-ui-tests | sky-clock | 3.1 | 3.1 | 3.2 | 6.6 | 8.0 | 1073 | 1.0 | 0 | 20.0 |
 | 20261030-122046 | jsdom-ui-tests | sky-static | 1.5 | 2.0 | 0.8 | 3.1 | 7.8 | 1068 | 0.0 | 0 | 20.0 |
+| 20261106-205756 | profiles-persistence | table-clock | 2.1 | 4.0 | 1.7 | 6.0 | 5.4 | 939 | 1.0 | 0 | 20.0 |
+| 20261106-205756 | profiles-persistence | sky-clock | 2.8 | 4.2 | 4.4 | 8.9 | 7.8 | 1065 | 1.0 | 0 | 20.0 |
+| 20261106-205756 | profiles-persistence | sky-static | 1.2 | 2.8 | 1.2 | 4.3 | 7.7 | 1060 | 0.0 | 0 | 20.0 |
