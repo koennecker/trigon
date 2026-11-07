@@ -35,7 +35,8 @@ disk. It owns no astrology.
 - `src-tauri/` — the Rust wrapper: `src/main.rs` (the six commands
   `kv_get`/`kv_put`/`kv_delete`/`kv_get_all`/`ephe_get`/`ephe_put`),
   `tauri.conf.json` (product `Trigon`, version `0.0.1`, identifier
-  `com.koennecker.trigon`, `frontendDist` `../site`),
+  `com.koennecker.trigon`, `frontendDist` `../../site` — relative to
+  `src-tauri/`, where the config file lives),
   `capabilities/`, `build.rs`, `icons/icon.png` (generated from the
   Trigon logo).
 - `../site/desktop.js` — the only frontend file that knows about

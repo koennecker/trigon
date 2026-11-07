@@ -19,7 +19,7 @@
     "beforeBuildCommand": "",
     "beforeDevCommand": "",
     "devUrl": "http://localhost:1420",
-    "frontendDist": "../site"
+    "frontendDist": "../../site"
   },
   "bundle": {
     "active": true,

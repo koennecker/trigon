@@ -9,3 +9,5 @@ data/countryInfo.txt
 __pycache__/
 perf/*.png
 .env
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
