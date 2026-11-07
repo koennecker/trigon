@@ -136,3 +136,6 @@ environments expose no true GPU-utilization counter.
 | 20261106-205756 | profiles-persistence | table-clock | 2.1 | 4.0 | 1.7 | 6.0 | 5.4 | 939 | 1.0 | 0 | 20.0 |
 | 20261106-205756 | profiles-persistence | sky-clock | 2.8 | 4.2 | 4.4 | 8.9 | 7.8 | 1065 | 1.0 | 0 | 20.0 |
 | 20261106-205756 | profiles-persistence | sky-static | 1.2 | 2.8 | 1.2 | 4.3 | 7.7 | 1060 | 0.0 | 0 | 20.0 |
+| 20261107-105209 | desktop-wrapper | table-clock | 3.1 | 2.8 | 0.8 | 4.0 | 5.5 | 872 | 1.0 | 0 | 20.1 |
+| 20261107-105209 | desktop-wrapper | sky-clock | 19.3 | 2.9 | 3.4 | 6.6 | 8.1 | 1016 | 1.0 | 0 | 20.1 |
+| 20261107-105209 | desktop-wrapper | sky-static | 2.3 | 1.6 | 0.5 | 2.3 | 8.0 | 991 | 0.0 | 0 | 20.0 |
