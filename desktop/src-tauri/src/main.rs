@@ -3,7 +3,7 @@
 // on disk. It owns no astrology.
 //
 //   - SQLite: one kv table, (store, key, value TEXT as JSON).
-//     The frontend's persistence layer (persistence.js) is already a
+//     The frontend's persistence layer (persistence.js) is a
 //     kv abstraction over the stores settings/profiles/charts/meta,
 //     so the SQLite backend in frontend/desktop.js maps onto these
 //     four commands with no logic change in the app.
@@ -14,7 +14,6 @@
 //     (swe.wasm) exactly as on the web, and searches keep their
 //     Web Worker parallelization. A second, Rust-native ephemeris
 //     would be a second source of truth for no non-trivial gain.
-//     (Blake decision, 2026-11-07.)
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 

@@ -17,7 +17,6 @@
 // (swe.wasm), and searches keep their Web Worker parallelization:
 // that is the speedup, and a second, language-specific ephemeris
 // would be a second source of truth for no non-trivial gain.
-// (Blake decision, 2026-11-07.)
 //
 // The backend shape here matches persistence.js exactly
 // (get/put/delete/getAll over the stores settings/profiles/charts/meta),
