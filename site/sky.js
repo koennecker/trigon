@@ -163,7 +163,13 @@ export function lockButtonHTML(def) {
   return `🔒 tracking <b>${def.name}</b> · unlock`;
 }
 
-export function createSkyUI({ getEphemeris, store, setLoading, log }) {
+export function createSkyUI({ getEphemeris, store, setLoading, log, storage }) {
+  // Preferences live in the persistence layer's storage handle when
+  // supplied; localStorage is the fallback for older callers.
+  const prefsStorage = storage || {
+    getItem: k => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    setItem: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
+  };
   let THREE = null;
   let ready = false, visible = false, failed = null, aimed = false;
   let renderer = null, scene = null, camera = null, raf = 0;
@@ -225,7 +231,7 @@ export function createSkyUI({ getEphemeris, store, setLoading, log }) {
   const SKY_PREFS_KEY = 'trigon.sky.v1';
   function loadSkyPrefs() {
     try {
-      const p = JSON.parse(localStorage.getItem(SKY_PREFS_KEY) || 'null');
+      const p = JSON.parse(prefsStorage.getItem(SKY_PREFS_KEY) || 'null');
       if (!p || typeof p !== 'object') return;
       if (p.opts && typeof p.opts === 'object')
         for (const [k] of OVERLAY_DEFS) if (typeof p.opts[k] === 'boolean') opts[k] = p.opts[k];
@@ -241,7 +247,7 @@ export function createSkyUI({ getEphemeris, store, setLoading, log }) {
     try {
       const o = {};
       for (const [k] of OVERLAY_DEFS) o[k] = !!opts[k];
-      localStorage.setItem(SKY_PREFS_KEY, JSON.stringify({
+      prefsStorage.setItem(SKY_PREFS_KEY, JSON.stringify({
         opts: o, daylight: !!opts.daylight, textScale, glyphScale, viewMode, maxFps,
       }));
     } catch (e) { /* ignore */ }
@@ -1581,7 +1587,8 @@ export function createSkyUI({ getEphemeris, store, setLoading, log }) {
   }
 
   return { ensureInit, onEphemeris, setVisible, setViewMode, setCameraLock,
-           getViewState, get ready() { return ready; }, get failed() { return failed; },
+           getViewState, reloadPrefs() { loadSkyPrefs(); if (ready) { buildOptionsUI(); applyOpts(); if (visible) refresh(); } },
+           get ready() { return ready; }, get failed() { return failed; },
            get lockBodyId() { return lockBodyId; } };
 
   function getViewState() {

@@ -89,6 +89,13 @@ export function createChartStyle(env) {
   };
 
   return {
+    /** Re-read overrides from storage (e.g. after a profile switch). */
+    reload() {
+      try {
+        const raw = env.storage.getItem(CSTYLE_KEY);
+        overrides = raw ? JSON.parse(raw) || {} : {};
+      } catch (e) { overrides = {}; }
+    },
     /** Resolved style (defaults merged with overrides). */
     style,
     /** A copy of the current overrides object. */

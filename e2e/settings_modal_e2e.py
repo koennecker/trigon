@@ -55,7 +55,7 @@ def main():
             open_settings(page)
             secs = page.evaluate("""() => [...document.querySelectorAll('#settings-modal .set-sec > h3')]
               .map(h => h.textContent)""")
-            check("modal sections are Table/Chart/Sky", secs == ["Table", "Chart", "Sky"], str(secs))
+            check("modal sections are Table/Profiles/Chart/Sky", secs == ["Table", "Profiles", "Chart", "Sky"], str(secs))
             check("chart section carries the style inputs",
                   page.locator("#settings-chart input[type=number]").count() == 33)
             check("sky section shows the load hint before the Sky view opens",

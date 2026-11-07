@@ -31,6 +31,7 @@ import { createLoader } from './loader.js';
 import { createChartStyle } from './chart-style.js';
 import { createOuterWheels } from './outer-wheels.js';
 import { createChartTooltip } from './chart-tooltip.js';
+import { createPersistence, createIndexedDBBackend, DEFAULT_PROFILE_ID } from './persistence.js';
 import { setText, setHTML, createSwapGuard } from './dom-patch.js';
 import {
   S, update, subscribe, initPrefs, setPref,
@@ -52,7 +53,26 @@ const safeStorage = {
 // Session state (S) and preferences live in the store (store.js): this
 // file reads them and writes only via update()/setPref(). initPrefs
 // loads the preferences before anything reads them.
-initPrefs(safeStorage);
+//
+// Preferences now live in IndexedDB (persistence.js), not localStorage:
+// on first run the localStorage settings migrate once into the default
+// profile, then the keys are removed. The storage handle the factories
+// receive is a synchronous in-memory copy of the active profile's
+// record, flushed to IndexedDB asynchronously, so the existing sync
+// preference APIs keep working. When IndexedDB is unavailable
+// (sandboxed iframe) the app falls back to localStorage and profiles
+// are disabled.
+let persistence = null;
+let prefsStorage = safeStorage;
+try {
+  persistence = createPersistence(createIndexedDBBackend());
+  await persistence.init(safeStorage);
+  prefsStorage = persistence.prefsStorage;
+} catch (e) {
+  persistence = null;
+  prefsStorage = safeStorage;
+}
+initPrefs(prefsStorage);
 
 // JD of 0001-01-01 00:00 UTC: BCE/CE boundary for Moshier gating.
 const JD_1CE = jdFromCal(1, 1, 1, 0);
@@ -330,6 +350,7 @@ async function ensureSky() {
           getEphemeris: () => (S.out && S.inp && S.instantMs != null)
             ? { out: S.out, inp: S.inp, utcMs: S.instantMs } : null,
           store: { get: epheGet, put: ephePut },
+          storage: prefsStorage,
           setLoading: label => {
             const el = $('sky-loading');
             if (label) { el.textContent = label; el.style.display = 'flex'; }
@@ -670,7 +691,7 @@ async function initShare(shares) {
     : `Shared coordinates \u2014 ${fmtCoord(share.lat, share.lon)}`;
   locUI.setLocation(share.lat, share.lon, label, cityName);
   // Outer wheels from the remaining triplets.
-  outerApi.setWheels(shares.slice(1).map((s, i) => ({ utcMs: s.utcMs, label: `Wheel ${i + 1}` })));
+  outerApi.setWheels(shares.slice(1).map((s, i) => ({ utcMs: s.utcMs, label: s.name || `Wheel ${i + 1}` })));
   if (share.utcMs < -62167219200000) {
     // BCE share: Intl has no BCE zones, so restore the wall fields directly
     // as local mean time at the shared longitude.
@@ -1018,9 +1039,106 @@ const outerApi = createOuterWheels({
 // Customize-chart panel + persisted style overrides; a committed change
 // re-renders the wheel in place.
 const chartStyleApi = createChartStyle({
-  storage: safeStorage,
+  storage: prefsStorage,
   onChange: () => rerenderChartSVG(),
 });
+
+// ---------------------------------------------------------------- profiles
+// Profiles and saved charts (persistence.js). Profiles are local to
+// this device; each profile carries its own settings and saved charts.
+// With no profile the Default profile is active and behaves exactly
+// as settings did under localStorage.
+function renderProfilesUI() {
+  const sel = $('profile-select');
+  const note = $('profile-note');
+  if (!sel) return;
+  if (!persistence) {
+    sel.disabled = true;
+    if (note) note.textContent = 'Profiles need IndexedDB, which is unavailable here; settings stay on this browser.';
+    return;
+  }
+  const active = persistence.activeProfileId();
+  sel.innerHTML = '';
+  const def = document.createElement('option');
+  def.value = DEFAULT_PROFILE_ID;
+  def.textContent = 'Default (no profile)';
+  sel.appendChild(def);
+  for (const p of persistence.listProfiles()) {
+    const o = document.createElement('option');
+    o.value = p.id;
+    o.textContent = p.name;
+    sel.appendChild(o);
+  }
+  sel.value = active;
+  const prof = persistence.activeProfile();
+  if (note) note.textContent = prof
+    ? `Active profile: ${prof.name}. Settings and saved charts belong to this profile.`
+    : 'No profile active. Settings persist as before; create a profile to keep a separate set per profile.';
+}
+
+async function switchProfile(id) {
+  if (!persistence) return;
+  await persistence.switchProfile(id);
+  initPrefs(persistence.prefsStorage);
+  chartStyleApi.reload();
+  $('settings-chart').innerHTML = chartStyleApi.html();
+  chartStyleApi.wire($('settings-modal'));
+  $('set-lots-opts').innerHTML = buildLotOptionsHTML(lotsOpts);
+  syncSettingsUI();
+  searchUI.reloadConditions();
+  if (skyUI) skyUI.reloadPrefs();
+  renderProfilesUI();
+  renderSavedCharts();
+  if (S.out) renderResults(S.out);
+}
+
+function savedChartRowHTML(c) {
+  const label = `${c.name} — ${fmtInstant(c.utcMs / 86400000 + JD_UNIX_EPOCH)}`;
+  return `<label class="saved-row"><input type="checkbox" class="saved-check" data-id="${c.id}" aria-label="Select ${c.name} for multiwheel">`
+    + `<span class="saved-name">${c.name}</span>`
+    + `<span class="dim saved-meta">${label.slice(c.name.length + 3)}</span>`
+    + `<button type="button" class="ghost saved-load" data-id="${c.id}">Load</button>`
+    + `<button type="button" class="ghost saved-delete" data-id="${c.id}" aria-label="Delete ${c.name}">Delete</button></label>`;
+}
+
+function renderSavedCharts() {
+  const box = $('saved-charts');
+  if (!box) return;
+  if (!persistence) {
+    box.innerHTML = '<p class="hint-panel">Saved charts need IndexedDB, which is unavailable here.</p>';
+    return;
+  }
+  const charts = persistence.listCharts();
+  box.innerHTML = charts.length
+    ? charts.map(savedChartRowHTML).join('')
+    : '<p class="hint-panel">No saved charts yet for this profile.</p>';
+}
+
+async function saveCurrentChart() {
+  if (!persistence) return;
+  if (S.instantMs == null) { $('error').textContent = 'Calculate a chart first, then save it.'; return; }
+  const lat = parseFloat($('lat').value), lon = parseFloat($('lon').value);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) { $('error').textContent = 'Location is not set.'; return; }
+  const nameInput = $('save-chart-name');
+  const name = (nameInput.value || '').trim()
+    || `Chart ${fmtInstant(S.instantMs / 86400000 + JD_UNIX_EPOCH)}`;
+  try {
+    await persistence.saveChart({ name, lat, lon, utcMs: S.instantMs });
+    nameInput.value = '';
+    $('error').textContent = '';
+    renderSavedCharts();
+  } catch (e) { $('error').textContent = e.message; }
+}
+
+async function loadSavedChartsAsMultiwheel() {
+  if (!persistence) return;
+  const ids = [...document.querySelectorAll('#saved-charts .saved-check:checked')].map(c => c.dataset.id);
+  if (!ids.length) { $('error').textContent = 'Check one or more saved charts first.'; return; }
+  const charts = ids.map(id => persistence.getChart(id)).filter(Boolean);
+  if (!charts.length) return;
+  $('error').textContent = '';
+  await initShare(charts);
+}
 
 // ---------------------------------------------------------------- settings
 // One modal (gear button in the drawer head) holds the table, chart and
@@ -1105,7 +1223,7 @@ const ephe = createEpheClient({ ui: { showLoader: loader.show, isArmed: loader.i
 const locUI = createLocationUI({ el: $, log, storage: safeStorage, readDateFields: dtg.readDateFields });
 // Aspect + station search tabs.
 const searchUI = createSearchUI({
-  el: $, readDateFields: dtg.readDateFields, writeDateFields: dtg.writeDateFields,
+  el: $, storage: prefsStorage, readDateFields: dtg.readDateFields, writeDateFields: dtg.writeDateFields,
   ensureWasm: (...a) => ephe.ensureWasm(...a),
   ensureSearchFiles: (...a) => ephe.ensureSearchFiles(...a),
   JD_1CE, getAngleFmt: () => angleFmt,
@@ -1242,6 +1360,57 @@ function init() {
   outerApi.init();
   chartTip.init();
   outerApi.renderPanels();
+  renderProfilesUI();
+  renderSavedCharts();
+  $('save-chart').addEventListener('click', saveCurrentChart);
+  $('saved-multiwheel').addEventListener('click', loadSavedChartsAsMultiwheel);
+  $('saved-charts').addEventListener('click', async e => {
+    const load = e.target.closest('.saved-load');
+    const del = e.target.closest('.saved-delete');
+    if (load) {
+      const c = persistence ? persistence.getChart(load.dataset.id) : null;
+      if (c) { $('error').textContent = ''; await initShare([c]); }
+      return;
+    }
+    if (del) {
+      const c = persistence ? persistence.getChart(del.dataset.id) : null;
+      if (c && confirm(`Delete saved chart "${c.name}"?`)) {
+        await persistence.deleteChart(c.id);
+        renderSavedCharts();
+      }
+    }
+  });
+  $('profile-select').addEventListener('change', e => switchProfile(e.target.value));
+  $('profile-create').addEventListener('click', async () => {
+    if (!persistence) return;
+    const name = $('profile-new-name').value;
+    try {
+      await persistence.createProfile(name);
+      $('profile-new-name').value = '';
+      $('error').textContent = '';
+      await switchProfile(persistence.activeProfileId());
+    } catch (err) { $('error').textContent = err.message; }
+  });
+  $('profile-rename').addEventListener('click', async () => {
+    if (!persistence) return;
+    const prof = persistence.activeProfile();
+    if (!prof) { $('error').textContent = 'The Default profile has no name to rename; create a profile first.'; return; }
+    const name = $('profile-new-name').value;
+    try {
+      await persistence.renameProfile(prof.id, name);
+      $('profile-new-name').value = '';
+      $('error').textContent = '';
+      renderProfilesUI();
+    } catch (err) { $('error').textContent = err.message; }
+  });
+  $('profile-delete').addEventListener('click', async () => {
+    if (!persistence) return;
+    const prof = persistence.activeProfile();
+    if (!prof) { $('error').textContent = 'The Default profile cannot be deleted.'; return; }
+    if (!confirm(`Delete profile "${prof.name}" and all its saved charts?`)) return;
+    await persistence.deleteProfile(prof.id);
+    await switchProfile(DEFAULT_PROFILE_ID);
+  });
   animApi.init();
   $('calc').addEventListener('click', () => { animApi.stop(); run(true); });
   $('moshier').addEventListener('click', () => run(false));

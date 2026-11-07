@@ -401,6 +401,13 @@ export function condGroupHTML(group, gi) {
 
 export function createSearchUI(env) {
   const { el, readDateFields, writeDateFields, ensureWasm, ensureSearchFiles, JD_1CE } = env;
+  // Preferences (aspect conditions) live in the persistence layer's
+  // storage handle when supplied; localStorage is the fallback for
+  // callers that predate profiles.
+  const storage = env.storage || {
+    getItem: k => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    setItem: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
+  };
 
   const readRange = prefix => readRangeValues(
     readDateFields(prefix + '-start', false), readDateFields(prefix + '-end', false));
@@ -500,7 +507,7 @@ export function createSearchUI(env) {
   }
 
   function saveConditions() {
-    try { localStorage.setItem(COND_KEY, JSON.stringify(readConditionGroups())); } catch { /* storage unavailable */ }
+    try { storage.setItem(COND_KEY, JSON.stringify(readConditionGroups())); } catch { /* storage unavailable */ }
   }
 
   const defaultCond = () => ({ type: 'sign', who: 'a', mode: 'sign', value: 0 });
@@ -512,7 +519,7 @@ export function createSearchUI(env) {
   function loadConditions() {
     let groups = [];
     try {
-      const raw = localStorage.getItem(COND_KEY);
+      const raw = storage.getItem(COND_KEY);
       // Older saves were a flat list of conditions; normalizeConditionGroups
       // wraps each into its own group (same meaning under AND).
       if (raw) { const p = JSON.parse(raw); if (Array.isArray(p)) groups = normalizeConditionGroups(p); }
@@ -972,5 +979,5 @@ export function createSearchUI(env) {
     }
   }
 
-  return { initSearchTabs, runAspectSearch, runStationSearch, runIngressSearch };
+  return { initSearchTabs, runAspectSearch, runStationSearch, runIngressSearch, reloadConditions: loadConditions };
 }

@@ -269,6 +269,12 @@
   .set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0; }
   .set-row > span, .set-row > label { color: #c9d1d9; font-size: 13.5px; }
   .set-row select { width: auto; min-width: 0; }
+  /* Saved charts (drawer) and profile rows: one row per saved chart. */
+  .saved-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid #21262d; font-size: 13px; }
+  .saved-row input[type=checkbox] { width: auto; flex: 0 0 auto; accent-color: #58a6ff; }
+  .saved-name { color: #e6edf3; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .saved-meta { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .saved-row .ghost { margin: 0; padding: 2px 8px; font-size: 12px; }
   .set-checks { display: grid; grid-template-columns: 1fr; gap: 4px; padding: 4px 0; }
   .set-checks label { display: flex; align-items: flex-start; gap: 6px; cursor: pointer; font-size: 13px; color: #c9d1d9; }
   .set-checks input { width: auto; margin: 2px 0 0; flex: 0 0 auto; accent-color: #58a6ff; }
@@ -625,6 +631,16 @@
       <button id="add-wheel" class="ghost" type="button" style="margin-top:6px;">+ Add outer wheel</button>
       <small class="hint">Outer wheels show transits etc. against the root chart. Times are UTC.</small>
     </div>
+    <div class="field" id="saved-field" style="margin-top:14px;">
+      <label>Saved charts</label>
+      <div class="set-row">
+        <input id="save-chart-name" type="text" placeholder="Chart name" aria-label="Name for the saved chart" style="flex:1;min-width:0">
+        <button id="save-chart" class="ghost" type="button">Save current chart</button>
+      </div>
+      <div id="saved-charts"></div>
+      <button id="saved-multiwheel" class="ghost" type="button" style="margin-top:6px;">Load checked as multiwheel</button>
+      <small class="hint">Saved charts belong to the active profile. Check several and load them as a multiwheel: the first checked becomes the root chart, the rest outer wheels.</small>
+    </div>
     <div class="field" id="anim-field">
       <label>Animation</label>
       <div class="anim-row" id="anim-target-row" role="radiogroup" aria-label="Animation target">
@@ -980,6 +996,20 @@
         </select></div>
       <p class="set-sub">Hermetic lots</p>
       <div class="set-checks" id="set-lots-opts"></div>
+    </section>
+    <section class="set-sec" aria-labelledby="set-profiles-h">
+      <h3 id="set-profiles-h">Profiles</h3>
+      <div class="set-row"><label for="profile-select">Profile</label>
+        <select id="profile-select"></select></div>
+      <div class="set-row">
+        <input id="profile-new-name" type="text" placeholder="New profile name" aria-label="New profile name" style="flex:1;min-width:0">
+        <button id="profile-create" class="ghost" type="button">Create</button>
+      </div>
+      <div class="set-row">
+        <button id="profile-rename" class="ghost" type="button">Rename active profile to the name above</button>
+        <button id="profile-delete" class="ghost" type="button">Delete active profile</button>
+      </div>
+      <p class="hint" id="profile-note"></p>
     </section>
     <section class="set-sec" aria-labelledby="set-chart-h">
       <h3 id="set-chart-h">Chart</h3>

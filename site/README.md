@@ -115,6 +115,26 @@ up the same way.
   `app.js` so it executes in tests; jsdom tests in
   `test/ui-meta.test.js` render it and assert on the visible stamp,
   calendar, coordinates, and engine.
+- `persistence.js` — profiles, saved charts, and settings in
+  IndexedDB (DB `trigon-data`: settings / profiles / charts / meta).
+  Local-first, device-only, no auth or sync. One settings record per
+  profile holds every setting as the same string values the
+  localStorage keys held, so the existing per-key readers keep
+  working through a StorageHandle whose backing store is an
+  in-memory copy of the active profile's record, flushed to
+  IndexedDB asynchronously. With no profile the Default profile is
+  active and behaves as settings did under localStorage (migrated
+  once on first run, keys then removed). The first profile created
+  copies the currently active settings and becomes active; later
+  profiles copy the then-active profile. Saved charts are named
+  `{name, lat, lon, utcMs}` records under the active profile; the
+  drawer lists them with checkboxes, and loading checked charts as
+  a multiwheel makes the first checked the root and the rest outer
+  wheels (the manual + Add outer wheel path is unchanged). The
+  saved location is chart input, not a setting, so it stays on
+  localStorage and is shared across profiles; the drawer open state
+  likewise stays local. Unit tests in `test/persistence.test.js`
+  (in-memory backend) and Playwright in `e2e/profiles_e2e.py`.
 - `lots.js` — the 10 Hermetic lots (Paulus set, day/night by true Sun
   altitude) + `computeCatalogLots` for the Hellenistic selection, incl. the
   four opt-in tradition variants. (Type-checked.)
